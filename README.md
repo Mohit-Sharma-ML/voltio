@@ -61,7 +61,8 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 
 ## Screenshots
 
-> Screenshots will live here. Drop PNGs into `docs/screenshots/` and enable the block below.
+> Coming soon — the `docs/screenshots/` folder is ready; screenshots are added
+> in a follow-up commit.
 
 <!--
 <p align="center">

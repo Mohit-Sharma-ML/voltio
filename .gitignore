@@ -40,6 +40,7 @@ build/
 # Session screenshots / pasted images (never commit)
 *.png
 !Resources/*.png
+!docs/screenshots/*.png
 .vscode/
 CODE_GRAPH.md
 Memory.md

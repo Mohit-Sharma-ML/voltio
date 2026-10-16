@@ -61,19 +61,14 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 
 ## Screenshots
 
-> Coming soon — the `docs/screenshots/` folder is ready; screenshots are added
-> in a follow-up commit.
-
-<!--
 <p align="center">
-  <img src="docs/screenshots/menu.png"       width="320" alt="Menu bar panel" />
-  <img src="docs/screenshots/power-flow.png"  width="320" alt="Power flow" />
+  <img src="Docs/screenshots/panel-ring.png"              width="340" alt="Battery ring panel" />
+  <img src="Docs/screenshots/panel-health-power.png"      width="340" alt="Battery health and power flow" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/alerts.png"      width="320" alt="Alerts" />
-  <img src="docs/screenshots/settings.png"    width="320" alt="Settings" />
+  <img src="Docs/screenshots/panel-capacity-energy.png"   width="340" alt="Capacity and energy today" />
+  <img src="Docs/screenshots/settings-window.png"         width="440" alt="Settings window" />
 </p>
--->
 
 ## Requirements
 

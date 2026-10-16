@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Voltio host app entitlements TEMPLATE.
+
+  Voltio runs SANDBOXED — required for the widget extension: pkd rejects
+  appex plug-ins whose containing app is not sandboxed ("plug-ins must be
+  sandboxed"), and chronod then never ingests the widget's descriptor, so
+  the widget never appears in the gallery (see Docs/gap1-widget-ingestion.md).
+
+  Sandbox implications handled:
+  - IOKit battery / IORegistry reads: allowed without entitlements.
+  - Bluetooth: gated by NSBluetoothAlwaysUsageDescription in Info.plist.
+  - Energy history file lives in the app container
+    (EnergyStore resolves its directory dynamically).
+  - Custom alert sounds: absolute paths are read-only via NSOpenPanel-
+    granted access; powerbox grants read access to user-picked files.
+  - Login items: SMAppService works sandboxed.
+
+  The __TEAM_ID__ placeholder is replaced at build time by
+  scripts/build_app.sh using the Team ID from TeamID.local (gitignored).
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>__TEAM_ID__.group.com.voltio.app</string>
+	</array>
+</dict>
+</plist>

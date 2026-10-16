@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  VoltioWidgets extension entitlements TEMPLATE. WidgetKit extensions are
+  sandboxed; the App Group is the shared UserDefaults transport with the
+  host app.
+
+  The __TEAM_ID__ placeholder is replaced at build time by
+  scripts/build_app.sh using the Team ID from TeamID.local (gitignored) —
+  every contributor signs with their own team. The team-ID prefix is
+  REQUIRED: containermanagerd rejects unprefixed group containers for
+  sandboxed extensions.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>__TEAM_ID__.group.com.voltio.app</string>
+	</array>
+</dict>
+</plist>

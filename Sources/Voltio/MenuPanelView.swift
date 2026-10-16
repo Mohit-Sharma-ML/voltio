@@ -56,6 +56,33 @@ struct MenuPanelView: View {
         .preferredColorScheme(settings?.preferredAppearance.colorScheme ?? nil)
     }
 
+    /// Compact, always-visible line explaining macOS's charging management:
+    /// the native Charge Limit when set, or a one-word pointer to the hold
+    /// state shown in the status pill ("Paused by macOS"). Hidden when macOS
+    /// isn't managing charging at all.
+    @ViewBuilder private func chargeManagementHint(_ s: BatterySnapshot) -> some View {
+        let limitLabel = s.chargeLimitLabel(limit: model.chargeLimit)
+        if let limitLabel {
+            HStack(spacing: 5) {
+                Image(systemName: "gauge.with.needle")
+                    .font(.caption2)
+                    .foregroundStyle(.mint)
+                Text(limitLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else if s.isPausedByMacOS {
+            HStack(spacing: 5) {
+                Image(systemName: "bolt.pause.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.yellow)
+                Text("macOS is holding the charge (Optimized Charging)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     /// The whole "Battery Information" group: collapsible header plus the
     /// detail cards it reveals.
     @ViewBuilder
@@ -104,6 +131,12 @@ struct MenuPanelView: View {
     private func contentStack(_ s: BatterySnapshot) -> some View {
         VStack(spacing: 12) {
             hero(s)
+
+            // Above the fold: macOS charging management state (native Charge
+            // Limit or an Optimized Charging hold) — the expanded Battery
+            // Information section is collapsed by default, so this hint keeps
+            // the "why isn't it charging past 80?" answer visible at a glance.
+            chargeManagementHint(s)
 
             // Sections stack in the user's chosen order
             // (Settings → Menu Bar → Panel Sections).

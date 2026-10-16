@@ -21,29 +21,25 @@ public struct ChargeLimitState: Sendable, Equatable {
     }
 }
 
-/// Reads the native macOS charge-limit configuration. All sources are
-/// read-only public surfaces (`pmset -g battlimit`, `defaults read`);
-/// no private API is involved — see `Docs/gap2-charge-limit.md` for why
-/// the write path is off the table.
+/// Reads the native macOS charge-limit configuration. The only source is
+/// `pmset -g battlimit` (a read-only getter, safe to spawn from the sandbox —
+/// the child inherits the App Sandbox but powerd's XPC service is reachable).
+/// The `com.apple.batteryui.charging.mac` defaults domain is NOT readable from
+/// a sandboxed app (cfprefsd cages foreign domains to an empty view), so it is
+/// deliberately not consulted. No private API is involved — see
+/// `Docs/gap2-charge-limit.md` for why the write path is off the table.
 public struct ChargeLimitReader: Sendable {
     /// The pmset binary location. Injected for testability.
     private let pmsetPath: String
-    /// The defaults domain holding the battery UI's prior hold target.
-    private let batteryUIDomain: String
-    private let batteryUIKey = "com.apple.batteryui.charging.mac.prior.limit"
 
-    public init(
-        pmsetPath: String = "/usr/bin/pmset",
-        batteryUIDomain: String = "com.apple.batteryui.charging.mac"
-    ) {
+    public init(pmsetPath: String = "/usr/bin/pmset") {
         self.pmsetPath = pmsetPath
-        self.batteryUIDomain = batteryUIDomain
     }
 
-    /// Reads the current charge-limit state. Cheap enough to run on every
-    /// battery poll tick (two subprocess spawns, no IOKit work).
+    /// Reads the current charge-limit state. Runs I/O — call from a
+    /// background queue (see `BatteryModel.refreshChargeLimit`).
     public func read() -> ChargeLimitState {
-        ChargeLimitState(percent: readPmsetLimit() ?? readPriorLimit())
+        ChargeLimitState(percent: readPmsetLimit())
     }
 
     /// Parses `pmset -g battlimit`. With no limit set it prints
@@ -71,18 +67,6 @@ public struct ChargeLimitReader: Sendable {
             }
         }
         return nil
-    }
-
-    /// Falls back to the battery UI's "prior limit" — the hold target the
-    /// charging UI last enforced (Optimized Charging's ~80% target or the
-    /// user's chosen Charge Limit). Only consulted when pmset reports no
-    /// limit, and only trusted when it sits in the native 80–100 range.
-    private func readPriorLimit() -> Int? {
-        guard let value = UserDefaults(suiteName: batteryUIDomain)?
-            .object(forKey: batteryUIKey) as? Int,
-            (80...100).contains(value)
-        else { return nil }
-        return value
     }
 
     private func run(_ path: String, _ args: [String]) -> String? {

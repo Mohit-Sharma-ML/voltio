@@ -23,6 +23,11 @@ enum WidgetTheme {
 struct BatteryRingView: View {
     let snapshot: WidgetSnapshot
 
+    /// True while the timeline entry is being rendered for an interactive
+    /// context (gallery preview) — animation runs only when the widget is
+    /// actually live on screen, not in static previews.
+    @State private var boltAnimating = false
+
     var body: some View {
         ZStack {
             Circle()
@@ -45,6 +50,21 @@ struct BatteryRingView: View {
                 .minimumScaleFactor(0.4)
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
+            // Charging: a pulsing bolt overlaps the percentage — the "alive"
+            // cue that distinguishes charging from merely-plugged-in.
+            if snapshot.isCharging {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(WidgetTheme.green)
+                    .offset(x: 26, y: -26)
+                    .opacity(boltAnimating ? 0.45 : 1)
+                    .onAppear { boltAnimating = true }
+                    .onDisappear { boltAnimating = false }
+                    .animation(
+                        .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                        value: boltAnimating
+                    )
+            }
         }
     }
 }
@@ -78,6 +98,18 @@ struct BatteryCoreView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                }
+                // Schema v2: macOS hold (Optimized Charging / policy) — the
+                // pause badge explains "plugged in but the number isn't moving".
+                if snapshot.isChargeHold {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bolt.pause.fill")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("Held by macOS")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(WidgetTheme.orange)
+                    .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity)

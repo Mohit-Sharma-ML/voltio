@@ -40,6 +40,9 @@ final class WidgetSnapshotWriter {
             isPluggedIn: snapshot.isPluggedIn,
             isFullyCharged: snapshot.isFullyCharged,
             isLowPowerMode: snapshot.isLowPowerMode,
+            // Schema v2: macOS Optimized-Charging / policy hold (the panel's
+            // "Paused by macOS" state) surfaced to the widgets.
+            isChargeHold: snapshot.isPausedByMacOS,
             minutesRemaining: snapshot.minutesRemaining,
             systemPowerWatts: snapshot.systemPowerWatts,
             adapterWatts: snapshot.adapterWatts,

@@ -111,4 +111,62 @@ struct WidgetSnapshotTests {
         #expect(with(minutes: 0).timeRemainingText == nil)
         #expect(with(minutes: nil).timeRemainingText == nil)
     }
+
+    // MARK: - Schema v2: charge hold
+
+    @Test func v1PayloadWithoutChargeHoldFieldDecodesAsFalse() throws {
+        // A v1 app (pre-0.3.0) writes payloads without `isChargeHold`; the
+        // v2 widget must decode them rather than discard.
+        let json = """
+        {
+            "percentage": 80,
+            "isCharging": false,
+            "isPluggedIn": true,
+            "isFullyCharged": false,
+            "isLowPowerMode": false,
+            "minutesRemaining": null,
+            "systemPowerWatts": null,
+            "adapterWatts": 96,
+            "adapterName": null,
+            "energyTodayWh": null,
+            "energySampledMinutes": null,
+            "energyAvgWatts": null,
+            "timestamp": 1792000000
+        }
+        """
+        let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: Data(json.utf8))
+        #expect(decoded.isChargeHold == false)
+        #expect(decoded.statusText == "Plugged In")
+    }
+
+    @Test func chargeHoldSurfacesInStatusTextAndDefaultsOff() {
+        let s = Self.sample
+        let hold = WidgetSnapshot(
+            percentage: 80, isCharging: false, isPluggedIn: true,
+            isFullyCharged: false, isLowPowerMode: false, isChargeHold: true,
+            minutesRemaining: nil,
+            systemPowerWatts: nil, adapterWatts: nil, adapterName: nil,
+            energyTodayWh: nil, energySampledMinutes: nil, energyAvgWatts: nil,
+            timestamp: s.timestamp
+        )
+        #expect(hold.statusText == "Charging Paused")
+        // Absent flag (v1 default) keeps the plain plugged-in status.
+        #expect(Self.sample.statusText == "On Battery")
+    }
+
+    @Test func holdStatusYieldsToChargingAndFullyCharged() {
+        let s = Self.sample
+        func with(isCharging: Bool, isFullyCharged: Bool, isChargeHold: Bool) -> WidgetSnapshot {
+            WidgetSnapshot(
+                percentage: 90, isCharging: isCharging, isPluggedIn: true,
+                isFullyCharged: isFullyCharged, isLowPowerMode: false,
+                isChargeHold: isChargeHold, minutesRemaining: nil,
+                systemPowerWatts: nil, adapterWatts: nil, adapterName: nil,
+                energyTodayWh: nil, energySampledMinutes: nil, energyAvgWatts: nil,
+                timestamp: s.timestamp
+            )
+        }
+        #expect(with(isCharging: true, isFullyCharged: false, isChargeHold: true).statusText == "Charging")
+        #expect(with(isCharging: false, isFullyCharged: true, isChargeHold: true).statusText == "Fully Charged")
+    }
 }

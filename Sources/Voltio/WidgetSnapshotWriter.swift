@@ -20,18 +20,35 @@ final class WidgetSnapshotWriter {
 
     private let defaults: UserDefaults?
 
+    /// Reload throttling. WidgetKit budgets `reloadAllTimelines` calls
+    /// (replenished daily, roughly tens per day); requesting one every 5 s
+    /// tick exhausts the budget minutes after launch, after which the widget
+    /// falls back to its own timeline cadence and lags minutes behind the
+    /// menu bar (observed 2026-10-17: widget 15 points behind while charging).
+    /// Data writes are NEVER throttled — only the reload requests are.
+    static let minimumReloadInterval: TimeInterval = 10 * 60
+    private static let defaultsReloadKey = "widgetLastReloadAt"
+    /// Injectable clock for tests (set before constructing a writer; read
+    /// synchronously from the calling context).
+    nonisolated(unsafe) static var now: () -> Date = { Date() }
+    private let defaultsForReload: UserDefaults?
+
     /// - Parameter defaults: injectable for tests; `nil` uses the App Group suite.
     init(defaults: UserDefaults? = nil) {
         self.defaults = defaults ?? UserDefaults(suiteName: Self.appGroupID)
+        self.defaultsForReload = defaults ?? UserDefaults(suiteName: Self.appGroupID)
     }
 
     /// Encodes and publishes one snapshot. Cheap (a few hundred bytes of JSON
     /// every 5 s); the system coalesces suite writes to disk.
+    /// `forceReload` bypasses throttling for state flips (charging started,
+    /// hold engaged) — those are rare and worth spending budget on.
     func publish(
         _ snapshot: BatterySnapshot,
         todayEnergy: EnergyAggregator.DayTotal?,
         smoothedPowerWatts: Double?,
-        at date: Date = Date()
+        at date: Date = Date(),
+        forceReload: Bool = false
     ) {
         guard let defaults else { return }
         let payload = WidgetSnapshot(
@@ -54,9 +71,26 @@ final class WidgetSnapshotWriter {
         )
         guard let data = try? JSONEncoder().encode(payload) else { return }
         defaults.set(data, forKey: Self.storageKey)
-        // Ask WidgetKit to reload timelines; rate-limited by the system, so
-        // calling it on every tick is safe (it coalesces under the hood).
-        Self.reloadWidgets()
+        // Ask WidgetKit to reload timelines — throttled (see above), so the
+        // widget renders data at most ~10 min behind the app even when its
+        // budget is exhausted, and instantly on state flips.
+        if forceReload || Self.shouldReload(now: Self.now(), defaults: defaultsForReload) {
+            Self.recordReload(now: Self.now(), defaults: defaultsForReload)
+            Self.reloadWidgets()
+        }
+    }
+
+    /// Budget-aware reload gate: at most one reload per `minimumReloadInterval`.
+    /// Pure decision logic, unit-testable (clock and defaults injected).
+    static func shouldReload(now: Date, defaults: UserDefaults?) -> Bool {
+        guard let defaults else { return false }
+        let last = defaults.object(forKey: defaultsReloadKey) as? Date
+        guard let last else { return true }
+        return now.timeIntervalSince(last) >= minimumReloadInterval
+    }
+
+    static func recordReload(now: Date, defaults: UserDefaults?) {
+        defaults?.set(now, forKey: defaultsReloadKey)
     }
 
     static let storageKey = "widgetSnapshot"

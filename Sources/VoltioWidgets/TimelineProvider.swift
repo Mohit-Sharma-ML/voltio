@@ -17,11 +17,10 @@ enum WidgetSnapshotReader {
     }
 }
 
-/// Timeline strategy: one entry now, refreshed in 15 minutes. The app calls
-/// `WidgetCenter.reloadAllTimelines()` on every battery tick, so in practice the
-/// widget updates within seconds of the app running; the 15-minute fallback
-/// covers the case where Voltio isn't running (sleep, quit) and keeps the
-/// "last updated" label roughly honest.
+/// Timeline strategy: one entry now, refreshed in 5 minutes. The app also
+/// requests timeline reloads on state flips (charging started, hold engaged)
+/// and at most every 10 minutes while running — see WidgetSnapshotWriter's
+/// budget throttling.
 struct VoltioTimelineProvider: TimelineProvider {
     func placeholder(in context: Context) -> BatteryEntry {
         BatteryEntry(
@@ -51,7 +50,11 @@ struct VoltioTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryEntry>) -> Void) {
         let now = Date()
         let entry = BatteryEntry(snapshot: WidgetSnapshotReader.read(), date: now)
-        completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(15 * 60))))
+        // 5-minute self-refresh: bounds staleness when the app's reload budget
+        // is exhausted (WidgetKit coalesces to its own cadence regardless —
+        // this is a floor, not a guarantee). The app also requests reloads on
+        // state flips and at most every 10 minutes while running.
+        completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(5 * 60))))
     }
 }
 

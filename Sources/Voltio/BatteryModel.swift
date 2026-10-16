@@ -209,17 +209,28 @@ final class BatteryModel {
         smoothedPowerWatts = powerEstimator.estimateWatts
         energy.record(powerWatts: watts)
         sampleEnergyApps(systemWatts: reading.isPluggedIn ? nil : watts)
-        publishWidgetSnapshot(from: reading)
+        // Force a widget reload on state flips (charging started/stopped,
+        // plugged in/out, hold engaged) — rare events worth spending the
+        // WidgetKit reload budget on, and the ones where a stale widget is
+        // most misleading. Percentage-only changes ride the throttled path.
+        let stateKey = "\(reading.isCharging)-\(reading.isPluggedIn)-\(reading.isFullyCharged)-\(reading.isPausedByMacOS)-\(reading.isLowPowerMode)"
+        let flipped = stateKey != lastWidgetStateKey
+        lastWidgetStateKey = stateKey
+        publishWidgetSnapshot(from: reading, forceReload: flipped)
     }
+
+    /// Last published widget state signature, for flip detection.
+    private var lastWidgetStateKey: String?
 
     /// One-way handoff to the widget extension: the latest snapshot + today's
     /// energy, written to the App Group suite. Best-effort; failures are silent
     /// (the widget just keeps its previous timeline until the next tick).
-    private func publishWidgetSnapshot(from reading: BatterySnapshot) {
+    private func publishWidgetSnapshot(from reading: BatterySnapshot, forceReload: Bool = false) {
         widgetWriter.publish(
             reading,
             todayEnergy: energy.todayTotal,
-            smoothedPowerWatts: smoothedPowerWatts
+            smoothedPowerWatts: smoothedPowerWatts,
+            forceReload: forceReload
         )
     }
 

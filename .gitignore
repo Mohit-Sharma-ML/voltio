@@ -1,0 +1,52 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+/.build/
+/Packages/
+.swiftpm/
+Package.resolved
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+build/
+
+# Local app bundle output
+/dist/
+
+# Local runtime/scratch artifacts
+*.log
+
+# Local-only reference material (never commit: third-party binaries, IP risk)
+/*-analysis/
+/*-frames/
+
+# Local-only dev scratch scripts (UI previews / frame extraction). Kept on disk
+# for convenience but never shipped or committed.
+/scripts/extract_frames.swift
+/scripts/render_bolts.swift
+/scripts/preview_*.swift
+
+# Local-only IOKit diagnostic CLI. Not part of the shipped menu-bar app and
+# removed from Package.swift, so it is neither built by default nor committed.
+/Sources/battery-probe/
+
+# Local-only AI analysis notes (repo comprehension docs, never committed).
+/Memory.md
+/CODE_GRAPH.md
+
+# Session screenshots / pasted images (never commit)
+*.png
+!Resources/*.png
+.vscode/
+CODE_GRAPH.md
+Memory.md
+TeamID.local
+scripts/extract_frames.swift
+scripts/preview_*.swift
+scripts/render_bolts.swift
+scripts/gen_provisioning_project.rb
+scripts/gen_real_project.rb
+build/

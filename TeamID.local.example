@@ -1,0 +1,10 @@
+# Your Apple Team ID — required to build the app bundle.
+#
+# Find it in: Xcode → Settings → Accounts → your Apple ID → team details,
+# or at developer.apple.com → Account → Membership details.
+# It is a 10-character uppercase string (letters and digits).
+#
+# Copy this file to TeamID.local (gitignored) and replace the value below
+# with your own:
+#   cp TeamID.local.example TeamID.local
+XXXXXXXXXX

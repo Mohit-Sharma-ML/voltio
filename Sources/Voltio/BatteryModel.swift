@@ -35,6 +35,10 @@ final class BatteryModel {
     private var powerEstimator = PowerEstimator()
     /// Publishes battery/energy state to the widget extension via the App Group.
     private let widgetWriter = WidgetSnapshotWriter()
+    /// Native macOS charge-limit state (System Settings → Battery). Read-only.
+    private let chargeLimitReader = ChargeLimitReader()
+    /// Last known charge-limit configuration; refreshed on each battery tick.
+    private(set) var chargeLimit: ChargeLimitState?
     private let settings: AppSettings
     private let alerts: AlertManager
     private var hidDevices: [PeripheralDevice] = []
@@ -171,10 +175,30 @@ final class BatteryModel {
             lastUpdated = Date()
             lastError = nil
             recordEnergy(for: reading)
+            refreshChargeLimit()
         } catch {
             lastError = String(describing: error)
         }
     }
+
+    /// Reads the native charge-limit config (pmset + defaults). All I/O runs on
+    /// a background queue — spawning `pmset` on the main runloop starves the
+    /// IOPS MachPort callbacks and crashes `MainActor.assumeIsolated` (verified
+    /// 2026-10-16: crashes ~60 s after launch when read inline on the tick).
+    /// Republished only on change.
+    private func refreshChargeLimit() {
+        chargeLimitIOQueue.async { [weak self] in
+            guard let self else { return }
+            let state = self.chargeLimitReader.read()
+            Task { @MainActor [weak self] in
+                guard let self, state != self.chargeLimit else { return }
+                self.chargeLimit = state
+            }
+        }
+    }
+
+    /// Serial queue for the charge-limit subprocess/defaults I/O.
+    private let chargeLimitIOQueue = DispatchQueue(label: "com.voltio.chargelimit", qos: .utility)
 
     /// Feeds the EMA estimator and the daily energy sampler. Every tick counts —
     /// the energy integral needs samples even when nothing else changed, so this

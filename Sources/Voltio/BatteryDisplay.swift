@@ -46,6 +46,13 @@ extension BatterySnapshot {
         }
     }
 
+    /// One-line description of the native charge-limit configuration, for the
+    /// panel's condition area. `nil` when no limit is set — the common case.
+    func chargeLimitLabel(limit: ChargeLimitState?) -> String? {
+        guard let limit, limit.isEnabled, let percent = limit.percent else { return nil }
+        return "macOS Charge Limit: \(percent)%"
+    }
+
     var statusText: String {
         if isPausedByMacOS { return "Paused by macOS" }
         if isFullyCharged { return "Fully charged" }

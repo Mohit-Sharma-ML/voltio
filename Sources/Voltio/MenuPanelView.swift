@@ -341,6 +341,38 @@ struct MenuPanelView: View {
             }
             .card()
         }
+        chargeLimitCard(s)
+    }
+
+    /// Native charge-limit awareness: shows the macOS-configured Charge Limit
+    /// (System Settings → Battery) when one is set, with a deep-link button.
+    /// Read-only — Voltio deliberately doesn't (and can't) set the limit;
+    /// see Docs/gap2-charge-limit.md.
+    @ViewBuilder private func chargeLimitCard(_ s: BatterySnapshot) -> some View {
+        if let label = s.chargeLimitLabel(limit: model.chargeLimit) {
+            HStack(spacing: 12) {
+                IconBadge(systemName: "gauge.with.needle", tint: .mint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label).font(.callout.weight(.medium))
+                    Text("Set in System Settings → Battery")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.battery") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open Battery settings")
+            }
+            .card()
+        }
     }
 
     /// Today's accumulated energy (trapezoid integral over sampled power) and

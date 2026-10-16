@@ -93,14 +93,9 @@ struct BatteryCoreView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let time = snapshot.timeRemainingText {
-                    Text(time)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                // Schema v2: macOS hold (Optimized Charging / policy) — the
-                // pause badge explains "plugged in but the number isn't moving".
+                // During a hold the time estimate is frozen/meaningless and
+                // the medium family needs the vertical room — the hold badge
+                // replaces it.
                 if snapshot.isChargeHold {
                     HStack(spacing: 3) {
                         Image(systemName: "bolt.pause.fill")
@@ -110,6 +105,11 @@ struct BatteryCoreView: View {
                     }
                     .foregroundStyle(WidgetTheme.orange)
                     .lineLimit(1)
+                } else if let time = snapshot.timeRemainingText {
+                    Text(time)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity)

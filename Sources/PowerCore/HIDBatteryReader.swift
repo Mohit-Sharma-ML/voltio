@@ -62,8 +62,15 @@ public struct HIDBatteryReader: Sendable {
         let n = name.lowercased()
         if n.contains("trackpad") { return .magicTrackpad }
         if n.contains("keyboard") { return .magicKeyboard }
-        if n.contains("mouse") { return .magicMouse }
+        if n.contains("magic mouse") || n.contains("mouse") { return .magicMouse }
         if n.contains("controller") { return .gameController }
+        // Third-party pointing devices that report battery over HID/IORegistry
+        // but whose names lack the word "mouse" (verified live 2026-10-17:
+        // Logitech "MX Master 3 B" exposes neither BatteryPercent nor a
+        // name keyword — see GATT-side fix in Peripheral.classify).
+        if n.contains("mx master") || n.contains("m720") || n.contains("anywhere") {
+            return .mouse
+        }
         return .other
     }
 }

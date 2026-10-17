@@ -28,6 +28,15 @@ public enum PeripheralKind: String, Sendable, Equatable, Codable {
         if n.contains("watch") { return .watch }
         if n.contains("macbook") || n.contains("imac") || n.contains("mac mini")
             || n.contains("mac studio") || n.hasSuffix("mac") { return .mac }
+        // Pointing devices / input accessories (verified live 2026-10-17:
+        // "MX Master 3 B" — Logitech BLE mice report battery over GATT but
+        // their names contain neither "mouse" nor any Apple keyword).
+        if n.contains("mouse") || n.contains("mx master") || n.contains("m720")
+            || n.contains("anywhere") { return .mouse }
+        if n.contains("keyboard") || n.contains("keys-to-go") || n.contains("k380")
+            || n.contains("k480") { return .keyboard }
+        if n.contains("trackpad") { return .trackpad }
+        if n.contains("headphone") || n.contains("beats") { return .headphones }
         return .other
     }
 }

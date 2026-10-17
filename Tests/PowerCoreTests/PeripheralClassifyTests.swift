@@ -48,3 +48,29 @@ final class PeripheralClassifyTests: XCTestCase {
         XCTAssertFalse(device(id: "ble:1234-ABCD").hasStableIdentity)
     }
 }
+
+// MARK: - Real-device regression (Q3, verified live 2026-10-17)
+
+extension PeripheralClassifyTests {
+
+    /// Logitech MX Master 3 B — connected live during the Q3 investigation.
+    /// Its name contains neither "mouse" nor any Apple keyword; both
+    /// classification tables previously returned .other.
+    func testLogitechMXMaster3B() {
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "MX Master 3 B"), .mouse)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "MX Master 3S"), .mouse)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "MX Anywhere 3"), .mouse)
+    }
+
+    func testGenericKeywordDevices() {
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Bluetooth Mouse"), .mouse)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Keys-To-Go"), .keyboard)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "K380 Keyboard"), .keyboard)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Beats Studio Buds"), .headphones)
+        // Apple products still win (checked before the generic keywords):
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Apple Watch"), .watch)
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Mohit's iPhone"), .iphone)
+        // Untouched names still degrade to .other
+        XCTAssertEqual(PeripheralKind.classify(deviceName: "Hydra 10 5.3"), .other)
+    }
+}

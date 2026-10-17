@@ -36,6 +36,9 @@ system purges third-party widget caches on every reinstall.
 
 ## Ground rules
 
+- **No direct pushes to main — always a PR.** A pre-push hook enforces
+  this locally; after cloning, install it once:
+  `git config core.hooksPath .githooks`
 - **Keep PRs focused** — one feature or fix per PR. Small PRs get reviewed
   and merged fast.
 - **Test the logic you touch.** `PowerCore` (the telemetry engine) is fully

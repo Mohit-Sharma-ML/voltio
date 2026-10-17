@@ -1,5 +1,6 @@
 import CoreBluetooth
 import Foundation
+import IOBluetooth
 import os
 import PowerCore
 
@@ -117,6 +118,22 @@ final class BluetoothBatteryScanner: NSObject {
     /// advertisement path instead). Safe to call every poll.
     func refreshConnectedDevices() {
         guard let central, central.state == .poweredOn else { return }
+        // Refresh the paired-names cache lazily (≥10 min between IOBluetooth
+        // queries); drives the Continuity ownership gate below.
+        refreshPairedNamesIfStale()
+        // Ownership confirmation (see `confirmedOwnedNames`): the full set of
+        // Bluetooth devices the SYSTEM has connected to this Mac — no service
+        // filter. Continuity devices (AirPods) are only trusted once their
+        // name appears here; strangers broadcasting nearby never connect.
+        let allConnected = central.retrieveConnectedPeripherals(withServices: [])
+        let systemConnectedNames = Set(
+            allConnected.compactMap { Self.normalizedName($0.name) }
+        )
+        if systemConnectedNames != lastSystemConnectedNames {
+            lastSystemConnectedNames = systemConnectedNames
+            confirmOwnership(against: systemConnectedNames)
+        }
+
         let connected = central.retrieveConnectedPeripherals(withServices: [batteryServiceUUID])
         btLog.debug("GATT refresh: \(connected.count) connected device(s) expose the Battery Service")
         diagnostics.gattDevicesSeen = max(diagnostics.gattDevicesSeen, connected.count)
@@ -150,6 +167,98 @@ final class BluetoothBatteryScanner: NSObject {
         }
     }
 
+    // MARK: - Continuity ownership confirmation
+
+    /// Names from the Continuity path that have been confirmed as owned by
+    /// observing the system connect to them at least once. Kept for the
+    /// process lifetime; persistence across launches rides on
+    /// `DeviceHistoryStore` (a confirmed device gets a stable identity).
+    private var confirmedOwnedNames: Set<String> = []
+    private var lastSystemConnectedNames: Set<String> = []
+
+    /// The system's paired-device names (IOBluetooth, refreshed lazily).
+    /// Audio-stack connections (AirPods playing audio) are invisible to
+    /// CoreBluetooth's `retrieveConnectedPeripherals` — they connect via the
+    /// ACL/audio path, not app-level GATT — so "connected" confirmation alone
+    /// never fires for the most important device. The paired list is the
+    /// ground truth for "whose devices are mine": a Continuity advert whose
+    /// LocalName matches a paired device's Bluetooth name (the same GAP name
+    /// field on both sides) belongs to a device the user paired at some
+    /// point. True strangers' adverts never match.
+    private var pairedNames: Set<String>?
+    private var pairedNamesFetchedAt: Date?
+
+    /// Case/space-insensitive name normalization for matching an advert's
+    /// local name against the system's connected-device names.
+    nonisolated static func normalizedName(_ name: String?) -> String? {
+        guard let name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.lowercased()
+    }
+
+    /// Confirm any currently-visible Continuity device whose (normalized)
+    /// name matches a device the system just connected to. Confirms all
+    /// name-collisions — acceptable: Apple device names in one room rarely
+    /// collide, and a collision only adds a device the user can hide.
+    private func confirmOwnership(against systemConnectedNames: Set<String>) {
+        guard !systemConnectedNames.isEmpty else { return }
+        var changed = false
+        for (uuid, device) in devices where !confirmedOwnedNames.contains(device.name.lowercased()) {
+            if systemConnectedNames.contains(device.name.lowercased()) {
+                confirmedOwnedNames.insert(device.name.lowercased())
+                changed = true
+            }
+        }
+        if changed { emit() }
+    }
+
+    /// True when a Continuity device may be shown: it has been confirmed
+    /// owned (the system connected to it at least once), OR its advertised
+    /// name matches a device in the system's paired list (the same GAP name
+    /// on both sides — covers audio-only connections CB can't see).
+    func isContinuityDeviceOwned(_ device: PeripheralDevice) -> Bool {
+        let name = device.name.lowercased()
+        if confirmedOwnedNames.contains(name) { return true }
+        return pairedNames?.contains(name) ?? false
+    }
+
+    /// Refresh the paired-names cache (called before the emit filter needs
+    /// it; at most once per 10 minutes — the paired list rarely changes).
+    func refreshPairedNamesIfStale(now: Date = Date()) {
+        if let fetched = pairedNamesFetchedAt, now.timeIntervalSince(fetched) < 600 {
+            return
+        }
+        pairedNames = Self.fetchPairedNames()
+        pairedNamesFetchedAt = now
+        // Newly-paired devices may now confirm already-visible adverts.
+        confirmPairedOwnership()
+        emit()
+    }
+
+    /// Confirm Continuity devices matching the paired list.
+    private func confirmPairedOwnership() {
+        guard let pairedNames else { return }
+        var changed = false
+        for (_, device) in devices {
+            let name = device.name.lowercased()
+            if !confirmedOwnedNames.contains(name), pairedNames.contains(name) {
+                confirmedOwnedNames.insert(name)
+                changed = true
+            }
+        }
+        if changed { emit() }
+    }
+
+    /// Query the system paired list. Nonisolated + static: IOBluetooth's
+    /// pairedDevices() is thread-safe for local reads and keeps IOBluetooth
+    /// types out of the MainActor-isolated scanner state.
+    nonisolated static func fetchPairedNames() -> Set<String>? {
+        guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else {
+            return nil
+        }
+        return Set(paired.compactMap { normalizedName($0.name as String?) })
+    }
+
     /// Drop devices we haven't seen recently (called from the model's poll).
     func pruneStale() {
         let cutoff = Date().addingTimeInterval(-staleAfter)
@@ -160,11 +269,20 @@ final class BluetoothBatteryScanner: NSObject {
 
     private func emit() {
         let merged = Array(devices.values) + Array(gattDevices.values)
+        // Ownership gate: Continuity adverts (the `ble:` path) fire for ANY
+        // Apple device in radio range — yours, a colleague's, a stranger's
+        // (RSSI ≥ -65 is proximity, not ownership). Only devices the SYSTEM
+        // has connected to this Mac at least once are trusted; everything
+        // else stays invisible. GATT devices are inherently paired-only
+        // (retrieveConnectedPeripherals), so they pass untouched.
+        let owned = merged.filter { device in
+            device.id.hasPrefix("ble:") ? isContinuityDeviceOwned(device) : true
+        }
         // Collapse indistinguishable rows (same kind, name and battery readings)
         // — e.g. the same AirPods re-observed under a rotated privacy address.
         var seen = Set<String>()
         var collapsedSignatures = Set<String>()
-        let unique = merged.filter { device in
+        let unique = owned.filter { device in
             let signature = "\(device.kind.rawValue)|\(device.name)|"
                 + device.batteries.map { "\($0.id):\($0.percent):\($0.isCharging)" }.joined(separator: ",")
             let inserted = seen.insert(signature).inserted

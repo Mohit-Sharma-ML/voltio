@@ -15,11 +15,15 @@ cp TeamID.local.example TeamID.local
 # edit TeamID.local — replace the placeholder with your Team ID
 # (Xcode → Settings → Accounts → team details)
 
-swift build          # quick debug build
-swift test           # full test suite
-scripts/build_app.sh release   # runnable .app in dist/
-open dist/Voltio.app
+make build           # quick debug build (or `just build`)
+make test            # full test suite
+make app             # runnable .app in dist/
+make run             # build + open it
 ```
+
+(`make` and `just` wrap the same scripts — use whichever is installed.)
+Prefer raw commands? `swift build`, `swift test`,
+`scripts/build_app.sh` do the same thing.
 
 > **Note:** `swift test` must run with the Xcode toolchain. If your machine
 > uses [swiftly](https://swift-lang.github.io/swiftly/) or a standalone Swift
@@ -45,15 +49,21 @@ system purges third-party widget caches on every reinstall.
 - **Keep subprocess/IO work off the main actor** in callback-driven paths
   (IOKit/Bluetooth callbacks run on the main runloop; blocking it stalls
   or crashes the app). Background queue → publish to `@MainActor`.
-- **No private API.** Public frameworks only. If a capability is gated
-  (see `Docs/gap2-charge-limit.md` for a worked example), document it and
-  work with what's public.
+- **No private API.** Public frameworks only. If a capability turns out
+  to be entitlement-gated (charge-limit writes are a worked example:
+  firmware-gated on current macOS), document it and work with what's
+  public.
 - **No new third-party dependencies.** Voltio is deliberately
   dependency-free (see Package.swift). Frameworks that ship with macOS are
   fine.
 - **Never commit personal identifiers** — Team IDs go in the gitignored
   `TeamID.local`, never in tracked files (templates use `__TEAM_ID__`
   placeholders substituted at build time).
+- **`Package.resolved` is gitignored on purpose.** The package graph is
+  dependency-free, so the lockfile carries no pins to preserve; ignoring
+  it keeps local Xcode/SPM experiments from leaking into PRs as diff
+  noise. Don't re-add it — if a dependency is ever introduced (unlikely,
+  see the ground rule above), revisit this policy in the same PR.
 
 ## Code layout
 
@@ -62,7 +72,6 @@ Sources/PowerCore/     battery/energy telemetry engine (pure logic, tested)
 Sources/Voltio/        the menu-bar app (SwiftUI + AppKit)
 Sources/VoltioWidgets/ the WidgetKit extension
 scripts/               build + packaging tooling
-Docs/                  engineering notes (widget ingestion, charge-limit)
 ```
 
 ## Versioning & releases

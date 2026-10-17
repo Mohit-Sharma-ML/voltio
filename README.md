@@ -62,12 +62,12 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 ## Screenshots
 
 <p align="center">
-  <img src="Docs/screenshots/panel-ring.png"              width="340" alt="Battery ring panel" />
-  <img src="Docs/screenshots/panel-health-power.png"      width="340" alt="Battery health and power flow" />
+  <img src="assets/panel-ring.png"              width="340" alt="Battery ring panel" />
+  <img src="assets/panel-health-power.png"      width="340" alt="Battery health and power flow" />
 </p>
 <p align="center">
-  <img src="Docs/screenshots/panel-capacity-energy.png"   width="340" alt="Capacity and energy today" />
-  <img src="Docs/screenshots/settings-window.png"         width="440" alt="Settings window" />
+  <img src="assets/panel-capacity-energy.png"   width="340" alt="Capacity and energy today" />
+  <img src="assets/settings-window.png"         width="440" alt="Settings window" />
 </p>
 
 ## Requirements
@@ -145,7 +145,7 @@ special entitlements; Bluetooth access is gated by the standard user prompt.
 │   └── VoltioWidgets/  The WidgetKit extension (small + medium widgets).
 ├── Tests/              PowerCoreTests + VoltioTests (75 XCTests).
 ├── Resources/          App icon, Info.plists, entitlement templates.
-├── Docs/               Engineering notes (widget ingestion deep-dive).
+├── assets/             Screenshots used by this README.
 └── scripts/            build_app.sh · make_icns.sh · dist.sh
 ```
 
@@ -165,9 +165,7 @@ Voltio is split so the logic is testable without a UI:
   `UserDefaults`.
 - **`VoltioWidgets`** — the WidgetKit extension. The app publishes a compact snapshot to a
   team-ID-prefixed App Group (`UserDefaults` suite) every few seconds; the extension reads
-  it and renders two widgets (battery, battery + energy). See
-  [`Docs/gap1-widget-ingestion.md`](Docs/gap1-widget-ingestion.md) for how the widget
-  reaches the gallery on macOS 26.
+  it and renders two widgets (battery, battery + energy).
 
 ## Privacy
 

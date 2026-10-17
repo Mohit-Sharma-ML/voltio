@@ -51,3 +51,4 @@ scripts/render_bolts.swift
 scripts/gen_provisioning_project.rb
 scripts/gen_real_project.rb
 build/
+Docs/

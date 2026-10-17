@@ -15,15 +15,17 @@ import IOKit.pwr_mgt
 /// (`iokit_common_msg(0x280)`), which the Clang importer does not expose to
 /// Swift. These mirror the exact `UInt32` values (sys_iokit | sub_iokit_common | code).
 private enum PowerMessage {
+    static let canSystemSleep: UInt32 = 0xE000_0270
     static let systemWillSleep: UInt32 = 0xE000_0280
     static let systemWillPowerOn: UInt32 = 0xE000_0320
     static let systemHasPoweredOn: UInt32 = 0xE000_0300
 }
 
 @MainActor
-final class SleepWakeObserver {
-    private let onSleep: () -> Void
-    private let onWake: () -> Void
+final class SleepWakeObserver: SleepWakeNotifying {
+    /// Set before `start()`; invoked on system sleep / full wake.
+    var onSleep: (() -> Void)?
+    var onWake: (() -> Void)?
 
     /// `nonisolated(unsafe)` lets the nonisolated `deinit` read these opaque
     /// C handles (`IONotificationPortRef`/`io_connect_t` are non-Sendable);
@@ -31,27 +33,39 @@ final class SleepWakeObserver {
     nonisolated(unsafe) private var notifyPort: IONotificationPortRef?
     nonisolated(unsafe) private var powerConnection: io_connect_t = 0
 
-    init(onSleep: @escaping () -> Void, onWake: @escaping () -> Void) {
-        self.onSleep = onSleep
-        self.onWake = onWake
-    }
-
     func start() {
         guard notifyPort == nil else { return }
 
         // Non-capturing so it bridges to a C function pointer. The port is
         // drained on the main run loop, so the callback fires on the main
         // thread — same contract PowerSourceMonitor relies on.
-        let callback: IOServiceInterestCallback = { _, _, messageType, rawContext in
-            guard let rawContext else { return }
+        let callback: IOServiceInterestCallback = { refcon, service, messageType, messageArgument in
+            // Acknowledgment contract (IOPMLib.h + Apple QA1340): the
+            // root-domain listener MUST answer sleep-family messages with
+            // IOAllowPowerChange, or power management stalls the sleep for a
+            // 30 s timeout (bad user experience). `messageArgument` carries
+            // the notification ID to acknowledge with. Fire the app callbacks
+            // after acknowledging.
+            switch messageType {
+            case PowerMessage.canSystemSleep, PowerMessage.systemWillSleep:
+                IOAllowPowerChange(service, Int(bitPattern: messageArgument))
+            default:
+                break
+            }
+            guard let refcon else { return }
             MainActorIsolation.assume {
                 let observer = Unmanaged<SleepWakeObserver>
-                    .fromOpaque(rawContext).takeUnretainedValue()
+                    .fromOpaque(refcon).takeUnretainedValue()
                 switch messageType {
                 case PowerMessage.systemWillSleep:
-                    observer.onSleep()
-                case PowerMessage.systemWillPowerOn, PowerMessage.systemHasPoweredOn:
-                    observer.onWake()
+                    observer.onSleep?()
+                // Restore on FULL wake only. kIOMessageSystemWillPowerOn fires
+                // early in the wake sequence — before battery/IOKit state has
+                // settled — and both messages also fire during dark wakes
+                // (CPU wakes for maintenance while the display stays off).
+                // HasPoweredOn is the documented "fully woken" point.
+                case PowerMessage.systemHasPoweredOn:
+                    observer.onWake?()
                 default:
                     break
                 }

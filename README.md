@@ -72,6 +72,15 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
   <img src="assets/settings-window.png"         width="440" alt="Settings window" />
 </p>
 
+## Install
+
+Download **[Voltio.dmg](https://github.com/Mohit-Sharma-ML/voltio/releases/latest)** from
+Releases, open it, and drag **Voltio** into **Applications**.
+
+> **First launch:** because the DMG is ad-hoc signed (notarization is planned), macOS may
+> warn that the app "can't be opened." Right-click **Voltio.app → Open → Open** once —
+> after that it launches normally.
+
 ## Requirements
 
 - **macOS 15 (Sequoia)** or later.
@@ -116,7 +125,7 @@ Regenerate the app icon (`Resources/AppIcon.icns`) from source:
 scripts/make_icns.sh
 ```
 
-## Distribution
+## Building from source
 
 `scripts/dist.sh` produces a Developer ID-signed, **notarized**, stapled DMG. It requires a
 paid Apple Developer Program membership and a one-time credential setup (documented at the

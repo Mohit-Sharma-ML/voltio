@@ -36,3 +36,18 @@ public protocol ChargeLimitReading: Sendable {
 }
 
 extension ChargeLimitReader: ChargeLimitReading {}
+
+/// Delivers system sleep/wake notifications. Exists so the model's
+/// sleep/wake handling (pre-sleep caching, wake catch-up) can be
+/// characterized-tested with a fake that simulates the transitions.
+/// `SleepWakeObserver` (its production implementation) declares conformance
+/// directly.
+@MainActor
+public protocol SleepWakeNotifying: AnyObject {
+    /// Invoked when the system is about to sleep (point of no return).
+    var onSleep: (() -> Void)? { get set }
+    /// Invoked when the system has fully woken.
+    var onWake: (() -> Void)? { get set }
+    /// Begin delivering notifications. Idempotent.
+    func start()
+}

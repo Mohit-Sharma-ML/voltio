@@ -7,7 +7,7 @@ import PowerCore
 
 /// Scripted battery readings: each `read()` pops the next state, holding the
 /// last one forever after the script is exhausted.
-final class FakeBatteryProvider: BatteryReadingProviding, @unchecked Sendable {
+class FakeBatteryProvider: BatteryReadingProviding, @unchecked Sendable {
     private let states: [BatterySnapshot]
     private var index = 0
     private let lock = NSLock()

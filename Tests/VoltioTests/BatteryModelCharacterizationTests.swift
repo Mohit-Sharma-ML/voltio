@@ -21,7 +21,8 @@ final class BatteryModelCharacterizationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        settings = AppSettings()
+        let suite = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+        settings = AppSettings(defaults: suite)
         provider = FakeBatteryProvider(states: [ModelTestSnapshots.make(percentage: 80)])
         widgetPublisher = FakeWidgetPublisher()
         chargeLimitReader = FakeChargeLimitReader()

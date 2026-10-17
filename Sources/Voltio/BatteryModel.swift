@@ -37,6 +37,9 @@ final class BatteryModel {
     private let widgetWriter: WidgetPublishing
     /// Native macOS charge-limit state (System Settings → Battery). Read-only.
     private let chargeLimitReader: ChargeLimitReading
+    /// Injected sleep/wake notifier (tests); nil = create the IOKit one.
+    private let sleepWakeNotifier: (any SleepWakeNotifying)?
+    /// Injected sleep/wake notifier (tests); nil = create the IOKit one.
     /// Last known charge-limit configuration; refreshed on each battery tick.
     private(set) var chargeLimit: ChargeLimitState?
     private let settings: AppSettings
@@ -66,7 +69,7 @@ final class BatteryModel {
     private var powerMonitor: PowerSourceMonitor?
     /// Wake/sleep notifications, so alerts catch up on thresholds crossed while
     /// the Mac slept (poll timers are suspended during sleep).
-    private var wakeObserver: SleepWakeObserver?
+    private var wakeObserver: (any SleepWakeNotifying)?
 
     /// Guards the heavier accessory read (IORegistry walk). Dropping an extra tick
     /// is fine here — the next accessory poll catches up.
@@ -83,9 +86,11 @@ final class BatteryModel {
         reader: BatteryReadingProviding = BatteryReader(),
         widgetWriter: WidgetPublishing = WidgetSnapshotWriter(),
         chargeLimitReader: ChargeLimitReading = ChargeLimitReader(),
+        sleepWakeNotifier: (any SleepWakeNotifying)? = nil,
         startMonitors: Bool = true
     ) {
         self.settings = settings
+        self.sleepWakeNotifier = sleepWakeNotifier
         self.reader = reader
         self.widgetWriter = widgetWriter
         self.chargeLimitReader = chargeLimitReader
@@ -100,6 +105,16 @@ final class BatteryModel {
         // Synchronous first read so the menu bar shows real data the instant the
         // app appears; every subsequent read runs off the main thread.
         bootstrap()
+
+        // Sleep/wake wiring is test-safe (an injected fake never touches
+        // IOKit), so it runs regardless of startMonitors — the model's
+        // sleep/wake behavior is part of the characterized surface.
+        let observer: any SleepWakeNotifying = sleepWakeNotifier ?? SleepWakeObserver()
+        observer.onSleep = { [weak self] in self?.handleSleep() }
+        observer.onWake = { [weak self] in self?.handleWake() }
+        observer.start()
+        wakeObserver = observer
+
         guard startMonitors else { return }
         startPolling()
 
@@ -109,13 +124,6 @@ final class BatteryModel {
         let monitor = PowerSourceMonitor { [weak self] in self?.refreshBattery() }
         monitor.start()
         powerMonitor = monitor
-
-        let observer = SleepWakeObserver(
-            onSleep: { [weak self] in self?.handleSleep() },
-            onWake: { [weak self] in self?.handleWake() }
-        )
-        observer.start()
-        wakeObserver = observer
     }
 
     /// Sleep suspends the poll tasks and IOKit notifications, so the state the

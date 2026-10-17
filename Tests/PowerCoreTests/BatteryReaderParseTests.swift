@@ -82,6 +82,30 @@ final class BatteryReaderParseTests: XCTestCase {
         XCTAssertNil(s.minutesRemaining)
     }
 
+    /// Fully charged on AC: IOKit emits huge non-sentinel garbage in
+    /// `AvgTimeToEmpty` (observed 2026-10-17: the panel showed
+    /// "277h 21m remaining" at 100%). Anything beyond 24 h is nonsense.
+    func testGarbageLargeTimeEstimateBecomesNil() {
+        var fixture = referenceFixture()
+        fixture["IsCharging"] = false
+        fixture["FullyCharged"] = true
+        fixture["AvgTimeToFull"] = 65535
+        fixture["AvgTimeToEmpty"] = 16_641 // 277 h 21 m — the observed garbage
+        fixture["TimeRemaining"] = 57_878 // 40-day variant seen live
+        let s = BatteryReader.parse(fixture)
+        XCTAssertNil(s.minutesRemaining)
+    }
+
+    /// Estimates inside the physically plausible range still parse.
+    func testPlausibleTimeEstimateSurvives() {
+        var fixture = referenceFixture()
+        fixture["IsCharging"] = false
+        fixture["AvgTimeToEmpty"] = 1_440 // exactly 24 h — plausible edge
+        fixture["TimeRemaining"] = 1_440
+        let s = BatteryReader.parse(fixture)
+        XCTAssertEqual(s.minutesRemaining, 1_440)
+    }
+
     func testMissingKeysFallBackToZero() {
         let s = BatteryReader.parse([:])
         XCTAssertEqual(s.percentage, 0)

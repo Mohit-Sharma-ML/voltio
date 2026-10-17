@@ -10,7 +10,12 @@
 
   Sandbox implications handled:
   - IOKit battery / IORegistry reads: allowed without entitlements.
-  - Bluetooth: gated by NSBluetoothAlwaysUsageDescription in Info.plist.
+  - Bluetooth: requires com.apple.security.device.bluetooth UNDER THE APP
+    SANDBOX — NSBluetoothAlwaysUsageDescription alone only gates the
+    privacy prompt; without the entitlement CBCentralManager reports
+    .unauthorized and the Devices section never sees BLE accessories
+    (regression found 2026-10-17: Devices section empty after the app
+    was sandboxed for widget ingestion).
   - Energy history file lives in the app container
     (EnergyStore resolves its directory dynamically).
   - Custom alert sounds: absolute paths are read-only via NSOpenPanel-
@@ -28,5 +33,7 @@
 	<array>
 		<string>__TEAM_ID__.group.com.voltio.app</string>
 	</array>
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
 </dict>
 </plist>

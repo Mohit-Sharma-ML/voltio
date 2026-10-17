@@ -74,17 +74,28 @@ public struct BatteryReader: Sendable {
 
     // MARK: - Field helpers
 
-    /// 0xFFFF is AppleSmartBattery's sentinel for "no valid estimate".
-    private static let invalidTimeEstimate = 65535
-
     private static func timeEstimate(_ d: [String: Any], isCharging: Bool) -> Int? {
         let primaryKey = isCharging ? "AvgTimeToFull" : "AvgTimeToEmpty"
         for key in [primaryKey, "TimeRemaining"] {
-            if let value = intValue(d[key]), value != invalidTimeEstimate, value > 0 {
+            if let value = intValue(d[key]), isValidEstimate(value) {
                 return value
             }
         }
         return nil
+    }
+
+    /// 0xFFFF is AppleSmartBattery's sentinel for "no valid estimate".
+    private static let invalidTimeEstimate = 65535
+    /// IOKit also emits *garbage* non-sentinel estimates when no estimate is
+    /// meaningful — e.g. `AvgTimeToEmpty` ≈ 40,000 minutes (27+ days) while
+    /// fully charged on AC (observed 2026-10-17: the panel showed
+    /// "277h 21m remaining" at 100% / "Fully charged"). No laptop pack
+    /// discharges over 24 h, so anything beyond that is treated as
+    /// "no estimate" rather than displayed.
+    private static let maxPlausibleEstimateMinutes = 24 * 60
+
+    private static func isValidEstimate(_ minutes: Int) -> Bool {
+        minutes > 0 && minutes != invalidTimeEstimate && minutes <= maxPlausibleEstimateMinutes
     }
 
     private static func milliWattsToWatts(_ value: Any?) -> Double? {

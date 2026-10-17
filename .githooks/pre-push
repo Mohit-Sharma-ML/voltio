@@ -1,0 +1,13 @@
+#!/bin/zsh
+# Voltio guard: no direct pushes to main — always a feature branch + PR.
+# Install: git config core.hooksPath .githooks  (done in repo setup)
+while read local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" ]]; then
+    echo ""
+    echo "⛔ Direct pushes to main are not allowed."
+    echo "   Flow: git switch -c feature/xyz → commit → push branch → open PR → merge."
+    echo "   (Emergency override: git push --no-verify origin main)"
+    exit 1
+  fi
+done
+exit 0

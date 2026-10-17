@@ -4,7 +4,7 @@ import PowerCore
 
 /// The panel hero: charge ring, status pill, time line, plus the compact
 /// charge-management hint line. Extracted from MenuPanelView.swift
-/// (Phase 1.2 of Docs/hardening-plan.md); internal so the container in the
+/// internal so the container in the
 /// core file can compose it.
 extension MenuPanelView {
 

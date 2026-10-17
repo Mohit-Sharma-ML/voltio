@@ -27,7 +27,7 @@ public struct ChargeLimitState: Sendable, Equatable {
 /// The `com.apple.batteryui.charging.mac` defaults domain is NOT readable from
 /// a sandboxed app (cfprefsd cages foreign domains to an empty view), so it is
 /// deliberately not consulted. No private API is involved — see
-/// `Docs/gap2-charge-limit.md` for why the write path is off the table.
+/// Firmware charge-limit writes are entitlement-gated on current macOS —
 public struct ChargeLimitReader: Sendable {
     /// The pmset binary location. Injected for testability.
     private let pmsetPath: String

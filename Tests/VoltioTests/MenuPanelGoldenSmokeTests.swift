@@ -4,7 +4,7 @@ import Testing
 import PowerCore
 @testable import Voltio
 
-/// Golden-image smoke for the panel (Phase 0.2 of Docs/hardening-plan.md).
+/// Golden-image smoke for the panel.
 /// Not pixel-perfect — the goal is "did the refactor break the layout":
 /// render `MenuPanelView` offscreen with a fixed snapshot and assert the
 /// render succeeds with plausible dimensions. Text-level assertions live on

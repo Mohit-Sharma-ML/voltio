@@ -5,7 +5,7 @@ import SwiftUI
 /// etc.), extracted from AppSettings.swift. Declared in an extension of
 /// `AppSettings` so they stay nested — every existing
 /// `AppSettings.PanelSection`-style reference is unchanged. Pure code motion
-/// (Phase 1.1 of Docs/hardening-plan.md); the @Observable stored properties
+/// the @Observable stored properties
 /// and their didSet wiring remain in the core file.
 extension AppSettings {
 

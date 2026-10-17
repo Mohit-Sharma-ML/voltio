@@ -2,7 +2,7 @@ import Foundation
 
 /// Panel card-group ordering: the user's drag order plus helpers to move
 /// sections and restore defaults. Extracted from AppSettings.swift
-/// (Phase 1.1 of Docs/hardening-plan.md); `panelSectionOrder` storage and its
+/// `panelSectionOrder` storage and its
 /// didSet stay in the core file.
 extension AppSettings {
 

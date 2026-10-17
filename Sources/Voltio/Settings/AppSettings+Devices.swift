@@ -1,7 +1,7 @@
 import Foundation
 
 /// Device visibility/pinning/alert-override helpers. Extracted from
-/// AppSettings.swift (Phase 1.1 of Docs/hardening-plan.md); the underlying
+/// AppSettings.swift the underlying
 /// stored properties stay in the core file.
 extension AppSettings {
 

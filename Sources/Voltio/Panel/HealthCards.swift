@@ -5,7 +5,7 @@ import PowerCore
 /// Expanded-detail health cards: Battery Health, Temperature, Power &
 /// Electrical, Power Flow, plus the shared card-title and stat-block
 /// primitives (used by CapacityCards too). Extracted from MenuPanelView.swift
-/// (Phase 1.2 of Docs/hardening-plan.md).
+///.
 extension MenuPanelView {
 
     func healthCard(_ s: BatterySnapshot) -> some View {

@@ -3,8 +3,7 @@ import SwiftUI
 import PowerCore
 
 /// Capacity, charging-condition, charge-limit-awareness, and hardware-specs
-/// cards. Extracted from MenuPanelView.swift (Phase 1.2 of
-/// Docs/hardening-plan.md).
+/// cards. Extracted from MenuPanelView.swift.
 extension MenuPanelView {
 
     func capacityCard(_ s: BatterySnapshot) -> some View {
@@ -75,7 +74,7 @@ extension MenuPanelView {
     /// Native charge-limit awareness: shows the macOS-configured Charge Limit
     /// (System Settings → Battery) when one is set, with a deep-link button.
     /// Read-only — Voltio deliberately doesn't (and can't) set the limit;
-    /// see Docs/gap2-charge-limit.md.
+    /// firmware charge-limit writes are entitlement-gated on current macOS.
     @ViewBuilder
     func chargeLimitCard(_ s: BatterySnapshot) -> some View {
         if let label = s.chargeLimitLabel(limit: model.chargeLimit) {

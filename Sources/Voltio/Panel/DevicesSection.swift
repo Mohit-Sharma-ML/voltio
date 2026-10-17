@@ -4,7 +4,7 @@ import PowerCore
 
 /// The Connected Devices section: visibility gate, device rows with
 /// multi-compartment batteries, and the Bluetooth-state placeholder.
-/// Extracted from MenuPanelView.swift (Phase 1.2 of Docs/hardening-plan.md).
+/// Extracted from MenuPanelView.swift.
 extension MenuPanelView {
 
     // MARK: - Connected Devices

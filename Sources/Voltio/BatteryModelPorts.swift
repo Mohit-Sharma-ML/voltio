@@ -5,8 +5,7 @@ import PowerCore
 /// logic (poll gating, widget reload throttling, sleep/wake caching, alert
 /// dispatch) can be characterized-tested with fakes. The concrete
 /// implementations are the production types; `BatteryModel` takes them via
-/// its initializer with production defaults (Phase 0 of the hardening plan —
-/// see Docs/hardening-plan.md).
+/// its initializer with production defaults.
 
 /// Provides the Mac's internal battery reading.
 public protocol BatteryReadingProviding: Sendable {

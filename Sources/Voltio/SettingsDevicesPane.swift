@@ -7,6 +7,10 @@ struct DevicesSettingsView: View {
     @Bindable var settings: AppSettings
     let model: BatteryModel
 
+    /// Results of the last Platform Health run (empty until "Run Checks").
+    @State private var healthChecks: [PlatformHealth.Check] = []
+    @State private var healthRunAt: Date?
+
     var body: some View {
         SettingsPane(
             icon: "ipad.and.iphone", tint: .blue, title: "Devices",
@@ -63,8 +67,9 @@ struct DevicesSettingsView: View {
         }
     }
 
-    /// Developer Mode: BLE scan pipeline counters and a fake battery override
-    /// for exercising alerts without draining the real battery.
+    /// Developer Mode: BLE scan pipeline counters, platform health checks,
+    /// and a fake battery override for exercising alerts without draining
+    /// the real battery.
     @ViewBuilder private var developerDiagnostics: some View {
         if settings.developerMode {
             let d = model.bleDiagnostics
@@ -91,8 +96,62 @@ struct DevicesSettingsView: View {
                     title: "GATT Devices",
                     subtitle: "Connected exposing Battery Service: \(d.gattDevicesSeen) · Battery reads: \(d.gattReads)"
                 ) { EmptyView() }
+                RowDivider()
+                platformHealthSection
             }
         }
+    }
+
+    /// Platform health: pass/fail per fragile platform seam. Runs on
+    /// demand via the refresh button — never on a polling path.
+    @ViewBuilder private var platformHealthSection: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Platform Health").font(.callout.weight(.medium))
+                Text(healthSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                healthChecks = PlatformHealth.runChecks(bluetoothAccess: model.bluetoothAccess)
+                healthRunAt = Date()
+            } label: {
+                Label("Run Checks", systemImage: "stethoscope")
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 2)
+
+        ForEach(healthChecks) { check in
+            HStack(spacing: 8) {
+                Image(systemName: check.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(check.passed ? .green : .red)
+                    .font(.caption)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(check.name).font(.caption.weight(.medium))
+                    Text(check.detail).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.leading, 4)
+        }
+
+        if let runAt = healthRunAt {
+            Text("Checked \(runAt.formatted(date: .omitted, time: .standard)) · run after a macOS update")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var healthSummary: String {
+        guard !healthChecks.isEmpty else {
+            return "Pass/fail per fragile platform seam — run after a macOS update"
+        }
+        let passed = healthChecks.filter(\.passed).count
+        return passed == healthChecks.count
+            ? "All \(healthChecks.count) checks passing"
+            : "\(passed)/\(healthChecks.count) passing — a failing check points at the seam to investigate"
     }
 
     private var deviceLegend: some View {

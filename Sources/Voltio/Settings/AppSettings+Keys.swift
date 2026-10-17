@@ -1,7 +1,7 @@
 import Foundation
 
 /// UserDefaults key names for every persisted setting. Extracted from
-/// AppSettings.swift (Phase 1.1 of Docs/hardening-plan.md). Internal (not
+/// AppSettings.swift. Internal (not
 /// `private`) so the didSet wiring in the core file can use it.
 extension AppSettings {
 

@@ -3,7 +3,7 @@ import SwiftUI
 import PowerCore
 
 /// Energy Today and per-app attribution cards, plus the updated/refresh line.
-/// Extracted from MenuPanelView.swift (Phase 1.2 of Docs/hardening-plan.md);
+/// Extracted from MenuPanelView.swift
 /// reads model + settings, both internal.
 extension MenuPanelView {
 

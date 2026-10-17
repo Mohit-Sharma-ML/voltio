@@ -3,7 +3,7 @@ import PowerCore
 @testable import Voltio
 
 /// Presentation rules for the native charge-limit awareness feature
-/// (Phase 1 of the Gap #2 spike — see Docs/gap2-charge-limit.md).
+/// (from the Gap #2 charge-limit spike).
 final class ChargeLimitDisplayTests: XCTestCase {
 
     func testLabelShowsConfiguredLimit() throws {

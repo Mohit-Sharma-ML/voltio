@@ -5,7 +5,7 @@ import PowerCore
 
 /// Characterization tests for `BatteryModel`'s decision logic — the untested
 /// conductor where both 2026-10-16 launch crashes lived. These pin CURRENT
-/// behavior (Phase 0 of Docs/hardening-plan.md) so later refactors are safe.
+/// behavior so later refactors are safe.
 ///
 /// The model is constructed with `startMonitors: false` — no poll tasks, no
 /// IOKit/BT/WidgetKit. Tests drive ticks by calling `refreshBattery()`

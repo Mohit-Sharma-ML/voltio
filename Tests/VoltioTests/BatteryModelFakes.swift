@@ -3,7 +3,7 @@ import PowerCore
 @testable import Voltio
 
 /// Fakes for `BatteryModel`'s collaborators (Phase 0 safety net — see
-/// Docs/hardening-plan.md). Deterministic, no IOKit/WidgetKit/defaults touch.
+/// the hardening plan). Deterministic, no IOKit/WidgetKit/defaults touch.
 
 /// Scripted battery readings: each `read()` pops the next state, holding the
 /// last one forever after the script is exhausted.

@@ -80,6 +80,26 @@ struct MenuPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        } else if s.isPluggedIn, s.isFullyCharged {
+            // 100% on AC with no limit/hold active: tell the user no limit
+            // is configured — the natural moment to discover the feature.
+            // Tappable: opens Battery settings (where the limit lives).
+            Button {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.battery") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "gauge.with.needle")
+                        .font(.caption2)
+                        .foregroundStyle(.mint)
+                    Text("No charge limit set — set one in Battery settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .underline()
+                }
+            }
+            .buttonStyle(.plain)
         }
     }
 

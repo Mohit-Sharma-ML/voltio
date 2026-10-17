@@ -26,7 +26,7 @@ final class BatteryModel {
     /// Merged list of connected accessories with battery (HID + Bluetooth).
     private(set) var peripherals: [PeripheralDevice] = []
 
-    private let reader = BatteryReader()
+    private let reader: BatteryReadingProviding
     private let hidReader = HIDBatteryReader()
     private let bluetooth = BluetoothBatteryScanner()
     private let history = DeviceHistoryStore()
@@ -34,9 +34,9 @@ final class BatteryModel {
     private let energyAppsSampler = EnergyAppsSampler()
     private var powerEstimator = PowerEstimator()
     /// Publishes battery/energy state to the widget extension via the App Group.
-    private let widgetWriter = WidgetSnapshotWriter()
+    private let widgetWriter: WidgetPublishing
     /// Native macOS charge-limit state (System Settings → Battery). Read-only.
-    private let chargeLimitReader = ChargeLimitReader()
+    private let chargeLimitReader: ChargeLimitReading
     /// Last known charge-limit configuration; refreshed on each battery tick.
     private(set) var chargeLimit: ChargeLimitState?
     private let settings: AppSettings
@@ -78,8 +78,17 @@ final class BatteryModel {
     /// BLE scan diagnostics (Settings → Devices, Developer Mode only).
     var bleDiagnostics: BLEDiagnostics { bluetooth.diagnostics }
 
-    init(settings: AppSettings) {
+    init(
+        settings: AppSettings,
+        reader: BatteryReadingProviding = BatteryReader(),
+        widgetWriter: WidgetPublishing = WidgetSnapshotWriter(),
+        chargeLimitReader: ChargeLimitReading = ChargeLimitReader(),
+        startMonitors: Bool = true
+    ) {
         self.settings = settings
+        self.reader = reader
+        self.widgetWriter = widgetWriter
+        self.chargeLimitReader = chargeLimitReader
         self.alerts = AlertManager(
             settings: settings,
             sender: NotificationSender { [weak settings] in settings?.notificationsEnabled ?? false }
@@ -91,6 +100,7 @@ final class BatteryModel {
         // Synchronous first read so the menu bar shows real data the instant the
         // app appears; every subsequent read runs off the main thread.
         bootstrap()
+        guard startMonitors else { return }
         startPolling()
 
         // Instant updates on charger plug/unplug and level changes. This only
@@ -230,6 +240,7 @@ final class BatteryModel {
             reading,
             todayEnergy: energy.todayTotal,
             smoothedPowerWatts: smoothedPowerWatts,
+            at: Date(),
             forceReload: forceReload
         )
     }

@@ -29,6 +29,26 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertFalse(battery.caseCharging)
     }
 
+    /// Real-world regression: advert captured live 2026-10-17 from AirPods 4
+    /// ANC (model 0x1B20, previously untested byte) via a 30 s BLE scan.
+    /// Tail bytes randomized per advert by Apple — masked with zeros; only
+    /// the first 10 payload bytes are decoder-relevant.
+    func testRealCapturedAirPods4ANC() throws {
+        let data = Data([
+            0x4C, 0x00, 0x07, 0x19,             // Apple, type 0x07, len 25
+            0x01, 0x1B, 0x20, 0x73,             // prefix, model 0x1B20, status
+            0xAA, 0x97, 0x32, 0x00, 0x08, 0x08, // pods/case nibbles + flags
+        ] + Array(repeating: 0, count: 19))
+        let battery = try XCTUnwrap(
+            ContinuityDecoder.decodeProximityPairing(manufacturerData: data))
+        XCTAssertEqual(battery.model, 0x1B20)
+        XCTAssertEqual(battery.left, 100)
+        XCTAssertEqual(battery.right, 100)
+        XCTAssertEqual(battery.caseBattery, 70)
+        XCTAssertTrue(battery.leftCharging)
+        XCTAssertFalse(battery.rightCharging)
+    }
+
     func testFlipSwapsLeftAndRight() throws {
         // status 0x00 -> flip == true -> left = high nibble, right = low nibble.
         let battery = try XCTUnwrap(

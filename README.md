@@ -6,6 +6,8 @@
 
 <p align="center">
   A native macOS menu-bar battery &amp; power companion — clean, fast, and entirely local.
+  <br/>
+  <sub>battery widget · menu bar monitor · AirPods &amp; accessory battery · power stats · charge-limit status — free &amp; open source</sub>
 </p>
 
 <p align="center">

@@ -10,13 +10,14 @@ extension MenuPanelView {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 cardTitle("Capacity", systemImage: "battery.100percent", tint: .green)
-                InfoButton(text: "Charge stored now (remaining) vs. the most it can hold today (full charge) vs. its original factory capacity (design).")
+                InfoButton(text: "Measured pack charge: remaining vs. the most it can hold today (full charge) vs. original factory capacity (design). The ring at the top shows macOS's charge estimate, which can sit a few points above or below the pack's measured ratio while charging or discharging.")
                 Spacer()
                 Text("mAh").font(.caption2).foregroundStyle(.secondary)
             }
             capacityBar(s)
             HStack(alignment: .top) {
-                capacityStat("Remaining", s.currentCapacitymAh, .green)
+                capacityStat("Remaining", s.currentCapacitymAh, .green.adaptiveTextTint(activeScheme),
+                             note: "\(s.packChargePercent)% of full")
                 Spacer()
                 capacityStat("Full charge", s.maxCapacitymAh, .primary)
                 Spacer()
@@ -27,14 +28,15 @@ extension MenuPanelView {
     }
 
     func capacityBar(_ s: BatterySnapshot) -> some View {
-        GeometryReader { geo in
+        let scheme = activeScheme
+        return GeometryReader { geo in
             let width = geo.size.width
             let design = Double(s.designCapacitymAh)
             let fullFraction = design > 0 ? Double(s.maxCapacitymAh) / design : 0
             let currentFraction = design > 0 ? Double(s.currentCapacitymAh) / design : 0
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.10))
-                Capsule().fill(Color.primary.opacity(0.20))
+                Capsule().fill(Color.primary.opacity(scheme == .light ? 0.14 : 0.10))
+                Capsule().fill(Color.primary.opacity(scheme == .light ? 0.26 : 0.20))
                     .frame(width: width * min(1, fullFraction))
                 Capsule().fill(Color.green)
                     .frame(width: width * min(1, currentFraction))
@@ -133,12 +135,15 @@ extension MenuPanelView {
         }
     }
 
-    func capacityStat(_ label: String, _ value: Int, _ tint: Color) -> some View {
+    func capacityStat(_ label: String, _ value: Int, _ tint: Color, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label).font(.caption2).foregroundStyle(.secondary)
             Text(Format.number(value))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(tint)
+            if let note {
+                Text(note).font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 

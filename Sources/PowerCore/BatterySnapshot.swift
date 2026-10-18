@@ -104,6 +104,22 @@ public struct BatterySnapshot: Sendable, Equatable {
         return maxCapacitymAh * 100 / designCapacitymAh
     }
 
+    /// Charge stored now as a percentage of the pack's measured full-charge
+    /// capacity (`currentCapacitymAh / maxCapacitymAh`).
+    ///
+    /// This deliberately differs from `percentage` (the fuel-gauge value macOS
+    /// shows everywhere): Apple's gauge compensates for charge taper, load and
+    /// temperature, so its % can sit several points above or below the raw
+    /// pack ratio during charge/discharge — e.g. gauge 97% while the pack
+    /// holds 92% of its measured full. Both are correct; they measure on
+    /// different scales. Surfacing the pack ratio next to the mAh numbers
+    /// keeps the Capacity card internally consistent (the bar already draws
+    /// this ratio) instead of appearing to contradict the ring.
+    public var packChargePercent: Int {
+        guard maxCapacitymAh > 0 else { return 0 }
+        return currentCapacitymAh * 100 / maxCapacitymAh
+    }
+
     public var temperatureFahrenheit: Double {
         temperatureCelsius * 9.0 / 5.0 + 32.0
     }

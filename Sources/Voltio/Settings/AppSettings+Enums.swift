@@ -185,6 +185,33 @@ extension AppSettings {
             }
         }
 
+        /// Concrete scheme for views that can't rely on the window cascade
+        /// (the MenuBarExtra panel). `.system` resolves against the current
+        /// system appearance at read time (main actor; the panel reads it
+        /// from view body, which is main-actor). In a non-app process
+        /// (unit tests) NSApp is nil and `NSAppearance` resolution falls
+        /// back to aqua — the light default.
+        /// Concrete scheme for views that can't rely on the environment
+        /// cascade. `.system` resolves against the current system appearance
+        /// at read time (main actor). Note: the menu panel no longer uses
+        /// this for `.system` — it reads the SwiftUI environment directly so
+        /// system-appearance flips re-render in real time.
+        @MainActor
+        var environmentColorScheme: ColorScheme {
+            switch self {
+            case .system:
+                // NSApp is an implicitly unwrapped optional and is nil in a
+                // bare test process (no NSApplication) — check before use.
+                if NSApp != nil,
+                   NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua {
+                    return .dark
+                }
+                return .light
+            case .light: return .light
+            case .dark: return .dark
+            }
+        }
+
         /// AppKit appearance name applied via `NSApp.appearance`; `nil` for
         /// `.system` so windows inherit the system appearance.
         var nsAppearanceName: NSAppearance.Name? {

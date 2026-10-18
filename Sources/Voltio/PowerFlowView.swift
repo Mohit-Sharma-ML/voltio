@@ -10,6 +10,8 @@ struct PowerFlowView: View {
     private let barSpacing: CGFloat = 8
     private let tileWidth: CGFloat = 58
 
+    @Environment(\.panelScheme) private var scheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             diagram
@@ -52,7 +54,7 @@ struct PowerFlowView: View {
                 LiquidBar(
                     watts: flow.systemWatts,
                     fill: clampFill(flow.systemWatts / scale),
-                    tint: Color(white: 0.78),
+                    tint: Color.primary.opacity(0.55),
                     emptyLabel: nil
                 )
                 .frame(height: barHeight)
@@ -127,10 +129,10 @@ struct PowerFlowView: View {
 
     private var tileBackground: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color.white.opacity(0.045))
+            .fill(scheme == .light ? Color.white.opacity(0.75) : Color.primary.opacity(0.045))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.07))
+                    .strokeBorder(Color.primary.opacity(scheme == .light ? 0.10 : 0.07))
             )
     }
 
@@ -222,13 +224,15 @@ private struct LiquidBar: View {
     let tint: Color
     var emptyLabel: String?   // shown instead of watts when there's no flow
 
+    @Environment(\.panelScheme) private var scheme
+
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.035))
+                    .fill(scheme == .light ? Color.white.opacity(0.6) : Color.primary.opacity(0.035))
 
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                     let phase = timeline.date.timeIntervalSinceReferenceDate * 2.2
@@ -250,11 +254,11 @@ private struct LiquidBar: View {
                 Text(label)
                     .font(.callout.weight(.bold))
                     .foregroundStyle(.primary)
-                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                    .shadow(color: scheme == .dark ? .black.opacity(0.35) : .white.opacity(0.6), radius: 2, y: 1)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08))
+                    .strokeBorder(Color.primary.opacity(scheme == .light ? 0.10 : 0.08))
             )
         }
     }

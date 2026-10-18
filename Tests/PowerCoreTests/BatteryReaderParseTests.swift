@@ -56,6 +56,8 @@ final class BatteryReaderParseTests: XCTestCase {
 
         // Health floors to 98 (8481 / 8579 = 98.85%), matching macOS tools.
         XCTAssertEqual(s.healthPercent, 98)
+        // Pack charge ratio floors to 96 (8158 / 8481 = 96.19%).
+        XCTAssertEqual(s.packChargePercent, 96)
         XCTAssertEqual(s.temperatureCelsius, 30.5, accuracy: 0.001)
         XCTAssertEqual(s.temperatureFahrenheit, 86.9, accuracy: 0.05)
         XCTAssertEqual(s.voltage, 12.912, accuracy: 0.0001)

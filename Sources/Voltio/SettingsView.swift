@@ -121,11 +121,11 @@ struct SidebarStatusCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(Color.settingsInsetFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08))
+                .strokeBorder(Color.settingsInsetStroke)
         )
         .padding(10)
     }

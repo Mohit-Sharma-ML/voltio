@@ -117,11 +117,11 @@ struct AlertsSettingsView: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
+                        .fill(Color.settingsInsetFill)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.09))
+                        .strokeBorder(Color.settingsInsetStroke)
                 )
             }
             .buttonStyle(.plain)
@@ -292,7 +292,7 @@ private struct ColorSwatchPicker: View {
                         Circle().strokeBorder(.white, lineWidth: selection == color ? 2 : 0)
                     )
                     .overlay(
-                        Circle().strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                        Circle().strokeBorder(Color.settingsInsetStroke, lineWidth: 0.5)
                     )
                     .scaleEffect(selection == color ? 1.12 : 1)
                     .onTapGesture {
@@ -319,11 +319,11 @@ private struct PositionPicker: View {
                         .frame(width: 40, height: 28)
                         .background(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(selection == position ? Color.white.opacity(0.16) : Color.white.opacity(0.04))
+                                .fill(selection == position ? Color.settingsSelectionFill : Color.settingsInsetFill)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Color.white.opacity(selection == position ? 0.25 : 0.08))
+                                .strokeBorder(selection == position ? Color.settingsSelectionStroke : Color.settingsInsetStroke)
                         )
                 }
                 .buttonStyle(.plain)
@@ -379,11 +379,11 @@ struct SoundPickerMenu: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
+                    .fill(Color.settingsInsetFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.09))
+                    .strokeBorder(Color.settingsInsetStroke)
             )
         }
         .menuStyle(.borderlessButton)

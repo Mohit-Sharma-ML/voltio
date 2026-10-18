@@ -73,7 +73,7 @@ extension MenuPanelView {
                 .foregroundStyle(.secondary)
             Text("\(reading.percent)%")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(reading.tint)
+                .foregroundStyle(reading.tint.adaptiveTextTint(activeScheme))
             if reading.isCharging {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 8, weight: .bold))

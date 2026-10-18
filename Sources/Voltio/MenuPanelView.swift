@@ -8,6 +8,61 @@ struct MenuPanelView: View {
     /// Needed for the per-device pin indicator; injected at the call site.
     var settings: AppSettings? = nil
 
+    /// The panel's active scheme — the single source of truth every color in
+    /// the panel derives from (gradient here, everything else via the
+    /// injected environment below).
+    @State private var observedSystemScheme: ColorScheme = .light
+    /// KVO token for NSApp.effectiveAppearance (Match System mode).
+    @State private var appearanceObservation: Any?
+
+    var activeScheme: ColorScheme {
+        switch settings?.preferredAppearance ?? .system {
+        case .system: return observedSystemScheme
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    /// Current system scheme, nil-safe for bare test processes (NSApp is an
+    /// implicitly unwrapped optional that is nil without NSApplication).
+    private static func currentSystemScheme(from app: NSApplication? = nil) -> ColorScheme {
+        let app = app ?? NSApp
+        guard let app else { return .light }
+        return app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .dark : .light
+    }
+
+    /// Installs a KVO observer on NSApp.effectiveAppearance (once). Called
+    /// from `.onAppear` — NOT from body: writing @State while SwiftUI is
+    /// mid-view-update is discarded, which is exactly the bug that froze
+    /// Match System on light. The KVO handler hops asynchronously onto the
+    /// main actor so the state write never lands mid-update either.
+    private func installSystemAppearanceObserver() {
+        // Pin the panel window's appearance FIRST — on every panel open.
+        // The panel lives in SwiftUI's `MenuBarExtraWindow` (level 101, above
+        // the status item's NSStatusBarWindow at level 25). That window does
+        // not reliably follow the NSApp appearance cascade: after the user
+        // flips Light → Dark, it keeps resolving semantic colors (system
+        // green, etc.) with their LIGHT variants while every scheme-explicit
+        // surface renders dark — the "Dark looks washed" bug. Re-pinning the
+        // window's appearance on open guarantees the whole window resolves
+        // under the preference's appearance. (Must run even when the KVO
+        // observer below is already installed — the window is recreated each
+        // time the panel opens.)
+        if let panelWindow = NSApp.windows.first(where: {
+            $0.className.contains("MenuBarExtraWindow") && $0.level.rawValue == 101
+        }) {
+            panelWindow.appearance = settings?.preferredAppearance.nsAppearanceName.flatMap { NSAppearance(named: $0) }
+        }
+        guard appearanceObservation == nil, NSApp != nil else { return }
+        observedSystemScheme = Self.currentSystemScheme()
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { app, _ in
+            Task { @MainActor in
+                observedSystemScheme = Self.currentSystemScheme(from: app)
+            }
+        }
+    }
+
     /// Battery Information is collapsible (compact by default) so the
     /// panel stays short and never reaches the Dock. Persisted via `AppSettings`
     /// (migrated from the former raw `@AppStorage("expandBatteryInfo")`) so the
@@ -31,7 +86,7 @@ struct MenuPanelView: View {
                 errorState
             }
 
-            Divider().overlay(Color.white.opacity(0.06))
+            Divider().overlay(Color.primary.opacity(activeScheme == .light ? 0.12 : 0.08))
             footer
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
@@ -44,16 +99,33 @@ struct MenuPanelView: View {
                 MenuPanelWindowSizer(contentSize: geometry.size)
             }
         }
+        .onAppear { installSystemAppearanceObserver() }
         .background(
             LinearGradient(
-                colors: [Color.panelTop, Color.panelBottom],
+                colors: [Color.panelTop(activeScheme), Color.panelBottom(activeScheme)],
                 startPoint: .top,
                 endPoint: .bottom
             )
         )
-        // Panel inherits the app appearance (System/Light/Dark) when settings
-        // are injected; falls back to the system look when settings is nil.
-        .preferredColorScheme(settings?.preferredAppearance.colorScheme ?? nil)
+        // The MenuBarExtra hosting window is system-owned and ignores
+        // `preferredColorScheme` (and window-appearance cascades) for a LIVE
+        // panel — so the scheme is injected directly into the environment.
+        // Explicit Light/Dark pins the scheme; Match System falls through to
+        // the environment's own value (which tracks the system appearance and
+        // re-renders when the system theme flips). Every color in the panel is
+        // semantic (primary-based) or scheme-explicit, so this one modifier
+        // drives the whole theme in real time.
+        .environment(\.colorScheme, activeScheme)
+        .environment(\.panelScheme, activeScheme)
+        // Re-key the entire panel on scheme change. The MenuBarExtra hosting
+        // window lags behind scheme flips: after Light → Dark, SwiftUI keeps
+        // rendering some views with light-resolved colors (darkened greens,
+        // washed pill) while scheme-explicit surfaces already render dark —
+        // a mixed frame that persists until an unrelated full re-render.
+        // Changing identity discards every cached render state and rebuilds
+        // the panel from scratch under the new scheme, so all colors resolve
+        // in one pass.
+        .id(activeScheme)
     }
 
     /// The whole "Battery Information" group: collapsible header plus the

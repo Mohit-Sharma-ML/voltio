@@ -1,3 +1,4 @@
+import AppKit
 import PowerCore
 import SwiftUI
 
@@ -97,6 +98,12 @@ struct DevicesSettingsView: View {
                     subtitle: "Connected exposing Battery Service: \(d.gattDevicesSeen) · Battery reads: \(d.gattReads)"
                 ) { EmptyView() }
                 RowDivider()
+                SettingsRow(
+                    icon: "circle.lefthalf.filled", tint: .indigo,
+                    title: "Appearance Resolution",
+                    subtitle: appearanceResolutionText
+                ) { EmptyView() }
+                RowDivider()
                 platformHealthSection
             }
         }
@@ -152,6 +159,16 @@ struct DevicesSettingsView: View {
         return passed == healthChecks.count
             ? "All \(healthChecks.count) checks passing"
             : "\(passed)/\(healthChecks.count) passing — a failing check points at the seam to investigate"
+    }
+
+    /// Live appearance-resolution readout: what the app thinks the scheme is
+    /// right now, from each of the three sources that must agree. Used to
+    /// diagnose Match System vs explicit Dark rendering differences.
+    private var appearanceResolutionText: String {
+        let pref = settings.preferredAppearance.rawValue
+        let appAppearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? "dark" : "light"
+        return "preference=\(pref) · NSApp=\(appAppearance) · panel resolves via pref"
     }
 
     private var deviceLegend: some View {

@@ -228,7 +228,7 @@ private struct PreviewSwatch: View {
             Circle()
                 .fill(tint)
                 .frame(width: 16, height: 16)
-                .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                .overlay(Circle().strokeBorder(Color.settingsInsetStroke, lineWidth: 1))
                 .overlay(
                     Circle()
                         .strokeBorder(.white, lineWidth: isSelected ? 2 : 0)

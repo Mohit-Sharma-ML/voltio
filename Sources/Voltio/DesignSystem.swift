@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Shared visual language for the panel: card surfaces, badges, bars.
 /// Kept flat and native — tint is used deliberately, not everywhere.
@@ -11,29 +12,41 @@ enum Theme {
 // MARK: - Panel palette
 
 extension Color {
-    /// Panel background gradient (appearance-adaptive; dark values match the
-    /// original fixed dark palette so the panel reads correctly in Light too).
-    static let panelTop = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(red: 0.11, green: 0.12, blue: 0.15, alpha: 1)
-            : NSColor(red: 0.96, green: 0.96, blue: 0.98, alpha: 1)
-    })
+    /// Panel background gradient (top), chosen by the panel's active scheme.
+    /// Scheme-explicit (not dynamic NSColors): the MenuBarExtra window's
+    /// effectiveAppearance doesn't follow the in-app Light/Dark pick, so
+    /// window-resolved colors would stay on the old theme. Light mirrors the
+    /// native macOS panel: soft gray backdrop so white cards read as cards.
+    static func panelTop(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.11, green: 0.12, blue: 0.15)
+            : Color(red: 0.93, green: 0.93, blue: 0.95)
+    }
     /// Panel background gradient (bottom of the gradient).
-    static let panelBottom = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(red: 0.05, green: 0.05, blue: 0.07, alpha: 1)
-            : NSColor(red: 0.90, green: 0.90, blue: 0.93, alpha: 1)
-    })
-    static let cardFill = Color.white.opacity(0.06)
-    static let cardStroke = Color.white.opacity(0.09)
+    static func panelBottom(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.05, green: 0.05, blue: 0.07)
+            : Color(red: 0.88, green: 0.88, blue: 0.91)
+    }
+    static let cardFill = Color.primary.opacity(0.06)
+    static let cardStroke = Color.primary.opacity(0.09)
 }
 
 /// Subtle colored glow used sparingly on accent elements.
 private struct Glow: ViewModifier {
     let color: Color
     let radius: CGFloat
+    @Environment(\.panelScheme) private var scheme
+
     func body(content: Content) -> some View {
-        content.shadow(color: color.opacity(0.4), radius: radius)
+        // Glow is a dark-mode effect: on light backgrounds the shadow
+        // renders as a dirty halo around icons/text. Light mode gets a
+        // crisp, glow-free render.
+        if scheme == .dark {
+            content.shadow(color: color.opacity(0.4), radius: radius)
+        } else {
+            content
+        }
     }
 }
 
@@ -43,26 +56,66 @@ extension View {
     }
 }
 
+// MARK: - Panel scheme (custom environment key)
+
+/// The panel's authoritative color scheme, written ONLY by MenuPanelView.
+/// The system `\.colorScheme` environment is set by the hosting window —
+/// and the MenuBarExtra window's value does not reliably follow the system
+/// appearance (it read *light* under Match System with a dark system),
+/// which produced mixed renders: scheme-explicit surfaces dark while
+/// env-reading components (glows, pill, bar tracks) rendered their light
+/// variants. A custom key has exactly one writer, so every component in
+/// the panel agrees.
+private struct PanelSchemeKey: EnvironmentKey {
+    static let defaultValue: ColorScheme = .dark
+}
+
+extension EnvironmentValues {
+    var panelScheme: ColorScheme {
+        get { self[PanelSchemeKey.self] }
+        set { self[PanelSchemeKey.self] = newValue }
+    }
+}
+
 // MARK: - Card surface
 
 private struct CardSurface: ViewModifier {
+    @Environment(\.panelScheme) private var scheme
+
     func body(content: Content) -> some View {
         content
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous)
-                    .fill(Color.cardFill)
+                    .fill(scheme == .light ? Color.white : Color.primary.opacity(0.06))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous)
-                    .strokeBorder(Color.cardStroke)
+                    .strokeBorder(Color.primary.opacity(scheme == .light ? 0.12 : 0.09))
             )
     }
 }
 
 extension View {
     func card() -> some View { modifier(CardSurface()) }
+}
+
+// MARK: - Scheme-aware accent text
+
+extension Color {
+    /// A tint tuned for use as *text* on the panel's cards. SwiftUI's fixed
+    /// colors (.green/.orange/…) are calibrated for fills and turn washy on a
+    /// light background — dark mode darkens them for contrast there instead.
+    /// Views read the scheme from the environment at the call site.
+    func adaptiveTextTint(_ scheme: ColorScheme) -> Color {
+        guard scheme == .light else { return self }
+        // Darken by blending toward black — keeps the hue, restores contrast.
+        let ns = NSColor(self)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ns.usingColorSpace(.deviceRGB)?.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: Double(h), saturation: Double(min(1, s * 1.15)), brightness: Double(b * 0.72))
+    }
 }
 
 // MARK: - Reusable pieces
@@ -126,10 +179,12 @@ struct FillBar: View {
     var tint: Color = .accentColor
     var height: CGFloat = 6
 
+    @Environment(\.panelScheme) private var scheme
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.10))
+                Capsule().fill(Color.primary.opacity(scheme == .light ? 0.14 : 0.10))
                 Capsule()
                     .fill(tint)
                     .frame(width: max(0, min(1, value)) * geo.size.width)
@@ -138,7 +193,6 @@ struct FillBar: View {
         .frame(height: height)
     }
 }
-
 /// A small labeled statistic used in horizontal groups.
 struct StatTile: View {
     let label: String
@@ -166,6 +220,8 @@ struct StatusPill: View {
     let systemName: String
     let tint: Color
 
+    @Environment(\.panelScheme) private var scheme
+
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: systemName)
@@ -173,10 +229,10 @@ struct StatusPill: View {
             Text(text)
                 .font(.caption.weight(.semibold))
         }
-        .foregroundStyle(tint)
+        .foregroundStyle(tint.adaptiveTextTint(scheme))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Capsule().fill(tint.opacity(0.18)))
+        .background(Capsule().fill(tint.opacity(scheme == .light ? 0.14 : 0.18)))
         .glow(tint, radius: 4)
     }
 }
@@ -191,22 +247,22 @@ struct BatteryRing: View {
     var size: CGFloat = 150
     private var lineWidth: CGFloat { size * 0.08 }
 
+    @Environment(\.panelScheme) private var scheme
+
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: lineWidth)
+                .stroke(Color.primary.opacity(scheme == .light ? 0.14 : 0.10), lineWidth: lineWidth)
 
             Circle()
                 .trim(from: 0, to: max(0.001, min(1, level)))
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [tint.opacity(0.55), tint]),
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
+                // Solid tint, not an angular gradient: a 2-stop angular ramp always has a wrap
+                // point somewhere on the circle, and SwiftUI sweeps the gradient opposite to the
+                // trim's clockwise direction — so for any level past ~75% the wrap lands ON the
+                // visible arc as a hard brightness seam (reported: "hard line on the left side"
+                // at 85%). Solid + glow reads identically at a glance and is seam-free at every
+                // level.
+                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .glow(tint, radius: 5)
 
@@ -214,11 +270,11 @@ struct BatteryRing: View {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(percentage)")
                         .font(.system(size: size * 0.30, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                     Text("%")
                         .font(.system(size: size * 0.12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.primary.opacity(0.45))
                 }
                 if isCharging {
                     Image(systemName: "bolt.fill")

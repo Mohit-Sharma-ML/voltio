@@ -59,15 +59,19 @@ extension MenuPanelView {
     // MARK: - Hero
 
     func hero(_ s: BatterySnapshot) -> some View {
-        VStack(spacing: 12) {
+        // Accent color: the user's own alert rule color when the level has
+        // crossed an enabled threshold (e.g. orange at 20, red at 10, or a
+        // custom charged color on AC) — the generic state color otherwise.
+        let tint = s.alertAwareColor(rules: settings?.alertRules ?? [])
+        return VStack(spacing: 12) {
             BatteryRing(
                 level: Double(s.percentage) / 100,
                 percentage: s.percentage,
-                tint: s.stateColor,
+                tint: tint,
                 isCharging: s.isCharging
             )
 
-            StatusPill(text: s.statusText, systemName: s.statusIcon, tint: s.stateColor)
+            StatusPill(text: s.statusText, systemName: s.statusIcon, tint: tint)
 
             if let minutes = s.minutesRemaining {
                 Text(timeText(s, minutes: minutes))
@@ -83,7 +87,7 @@ extension MenuPanelView {
                 RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                     .fill(Color.cardFill)
                 RadialGradient(
-                    colors: [s.stateColor.opacity(0.16), .clear],
+                    colors: [tint.opacity(0.16), .clear],
                     center: .center,
                     startRadius: 6,
                     endRadius: 160
@@ -93,7 +97,7 @@ extension MenuPanelView {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                .strokeBorder(s.stateColor.opacity(0.20))
+                .strokeBorder(tint.opacity(0.20))
         )
     }
 

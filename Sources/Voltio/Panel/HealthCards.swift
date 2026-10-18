@@ -21,12 +21,12 @@ extension MenuPanelView {
                     Spacer()
                     Text("\(s.healthPercent)%")
                         .font(.callout.weight(.bold))
-                        .foregroundStyle(s.healthColor)
+                        .foregroundStyle(s.healthColor.adaptiveTextTint(activeScheme))
                         .glow(s.healthColor, radius: 3)
                 }
                 FillBar(value: Double(s.healthPercent) / 100, tint: s.healthColor, height: 5)
                 HStack {
-                    Text(s.healthLabel).font(.caption).foregroundStyle(s.healthColor)
+                    Text(s.healthLabel).font(.caption).foregroundStyle(s.healthColor.adaptiveTextTint(activeScheme))
                     Spacer()
                     Text("\(s.cycleCount)/\(s.designCycleCount) cycles")
                         .font(.caption).foregroundStyle(.secondary)
@@ -52,7 +52,7 @@ extension MenuPanelView {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(String(format: "%.1f°C", s.temperatureCelsius))
                     .font(.callout.weight(.bold))
-                    .foregroundStyle(status.color)
+                    .foregroundStyle(status.color.adaptiveTextTint(activeScheme))
                 Text(String(format: "%.0f°F", s.temperatureFahrenheit))
                     .font(.caption2).foregroundStyle(.secondary)
             }
@@ -80,13 +80,13 @@ extension MenuPanelView {
                         Text("\(abs(s.amperage)) mA").font(.callout.weight(.semibold))
                         Image(systemName: s.currentDirectionIcon)
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(verdict.color)
+                            .foregroundStyle(verdict.color.adaptiveTextTint(activeScheme))
                     }
                 }
                 Spacer()
                 Text(verdict.label)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(verdict.color)
+                    .foregroundStyle(verdict.color.adaptiveTextTint(activeScheme))
             }
         }
         .card()

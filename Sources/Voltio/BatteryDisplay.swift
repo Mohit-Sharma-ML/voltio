@@ -34,6 +34,46 @@ extension BatterySnapshot {
         }
     }
 
+    /// Ring/accent color reflecting the user's own alert rules: when the
+    /// current level has crossed an enabled rule's threshold, the ring wears
+    /// that rule's color instead of the generic state color — so the panel
+    /// visually counts down toward the exact alert the user configured
+    /// (e.g. orange at 20%, red at 10%, rule-colored when a charged
+    /// threshold is met on AC).
+    ///
+    /// - Most severe match wins on battery: the *lowest* crossed low
+    ///   threshold (10% red beats 20% orange when the level is 8).
+    /// - On AC, the *highest* crossed charged threshold wins (a 90% charged
+    ///   rule beats an 80% one when the level is 95).
+    /// - Falls back to `stateColor` when no enabled rule matches, so the ring
+    ///   never regresses to a confusing color when alerts are off.
+    func alertAwareColor(rules: [BatteryAlertRule]) -> Color {
+        let enabled = rules.filter(\.enabled)
+        if isPluggedIn {
+            // Charged rules: level at/above threshold — highest threshold wins.
+            let charged = enabled
+                .filter { $0.category == .charged && percentage >= $0.threshold }
+                .max { $0.threshold < $1.threshold }
+            if let charged { return charged.color.color }
+            // Plugged in but below charged thresholds (e.g. charging from low):
+            // fall through to low rules so the ring keeps warning while the
+            // level is still inside a low-alert zone — mirroring how the
+            // low rules re-arm only off AC (hysteresis means they stay quiet
+            // here, but the ring's job is preview, not firing).
+            let lowOnAC = enabled
+                .filter { $0.category == .low && percentage <= $0.threshold }
+                .min { $0.threshold < $1.threshold }
+            if let lowOnAC { return lowOnAC.color.color }
+            return stateColor
+        }
+        // On battery: crossed low rules — lowest threshold (most severe) wins.
+        let low = enabled
+            .filter { $0.category == .low && percentage <= $0.threshold }
+            .min { $0.threshold < $1.threshold }
+        if let low { return low.color.color }
+        return stateColor
+    }
+
     /// True when macOS itself is holding charge back while the adapter is
     /// connected — Optimized Battery Charging's ~80% hold or an unspecified
     /// system policy hold. Thermal holds and "fully charged" have their own

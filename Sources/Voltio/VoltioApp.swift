@@ -67,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and keep NSApp.appearance in sync when the user changes it. A nil
             // appearance un-pins so windows inherit the system look.
             NSApp.appearance = settings.preferredAppearance.nsAppearanceName.flatMap { NSAppearance(named: $0) }
+            // The panel window doesn't exist yet at launch (it's created when
+            // the panel first opens) — MenuPanelView pins it on every open.
             observeAppearanceSetting(settings)
 
             let controller = HotKeyController()
@@ -160,6 +162,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // subcontrols (NSPopUpButton) don't re-resolve their label color
                 // from the nil-cascade alone and stay white-on-white in Light mode.
                 MainWindowController.shared.syncWindowAppearance()
+                // Re-pin the live panel window as well (it may be open while
+                // the user flips the picker): the MenuBarExtraWindow (level
+                // 101 — NOT the status item's NSStatusBarWindow) doesn't
+                // follow the NSApp cascade on its own, so a Light→Dark flip
+                // with the panel visible keeps resolving semantic colors
+                // (system green, etc.) with light variants until the next
+                // open. Setting the window's appearance explicitly forces an
+                // immediate re-resolve; nil under Match System restores the
+                // system inheritance. (MenuPanelView pins the same window on
+                // every open.)
+                let panelAppearance = settings.preferredAppearance.nsAppearanceName.flatMap { NSAppearance(named: $0) }
+                for window in NSApp.windows where window.className.contains("MenuBarExtraWindow") {
+                    window.appearance = panelAppearance
+                }
                 appDelegate.observeAppearanceSetting(settings)
             }
         }

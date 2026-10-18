@@ -19,9 +19,50 @@ extension Color {
             ? NSColor(red: 0.095, green: 0.10, blue: 0.115, alpha: 1)
             : NSColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)
     })
-    static let settingsCardFill = Color.white.opacity(0.045)
-    static let settingsCardStroke = Color.white.opacity(0.075)
-    static let settingsRowDivider = Color.white.opacity(0.06)
+    // Card surfaces: white overlays read as elevated cards on the dark
+    // background; in light mode the same recipe is invisible (white on
+    // white), so light uses a white card + black-based stroke instead —
+    // mirroring the native macOS settings look.
+    static let settingsCardFill = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.045)
+            : NSColor.white
+    })
+    static let settingsCardStroke = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.075)
+            : NSColor(white: 0, alpha: 0.12)
+    })
+    static let settingsRowDivider = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.06)
+            : NSColor(white: 0, alpha: 0.10)
+    })
+    /// Inset surface inside a card (e.g. inline pickers, preview tiles):
+    /// white overlay on dark; a slightly darker gray on light so the inset
+    /// reads as recessed rather than invisible.
+    static let settingsInsetFill = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.05)
+            : NSColor(white: 0, alpha: 0.045)
+    })
+    static let settingsInsetStroke = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.085)
+            : NSColor(white: 0, alpha: 0.10)
+    })
+    /// Control-selection highlight (segmented toggles): white overlay on
+    /// dark; on light a dark overlay keeps the selected state visible.
+    static let settingsSelectionFill = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.16)
+            : NSColor(white: 0, alpha: 0.12)
+    })
+    static let settingsSelectionStroke = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.25)
+            : NSColor(white: 0, alpha: 0.20)
+    })
 }
 
 /// Rebuilds AppKit-backed controls (menu-style `Picker` → `NSPopUpButton` and

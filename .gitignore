@@ -52,3 +52,6 @@ scripts/gen_provisioning_project.rb
 scripts/gen_real_project.rb
 build/
 Docs/
+
+# Local marketing/community drafts (Show HN, Reddit, awesome-list PRs)
+/local-posts/

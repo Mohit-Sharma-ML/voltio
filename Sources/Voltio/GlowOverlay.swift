@@ -54,10 +54,16 @@ final class GlowOverlayController {
         Task { [weak self, weak panel] in
             try? await Task.sleep(for: .seconds(1.8))
             guard let panel else { return }
-            await NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.6
-                panel.animator().alphaValue = 0
-            }
+            // Explicit grouping rather than `runAnimationGroup`: inside an
+            // async context that call resolves to the async overload, whose
+            // closure must be @Sendable — and the captured `panel` is not, so
+            // Swift 6.1 rejects it as a data race. Grouping keeps the same
+            // animation with no closure to send across isolation domains.
+            NSAnimationContext.beginGrouping()
+            NSAnimationContext.current.duration = 0.6
+            panel.animator().alphaValue = 0
+            NSAnimationContext.endGrouping()
+            try? await Task.sleep(for: .seconds(0.65))
             panel.orderOut(nil)
             if self?.window === panel { self?.window = nil }
         }

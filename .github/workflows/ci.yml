@@ -17,7 +17,11 @@ permissions:
 jobs:
   build-and-test:
     name: Build & test
-    runs-on: macos-15
+    # macos-26 (GA) ships Xcode 26.4; macos-15 still defaults to Xcode 16.4 /
+    # Swift 6.1, which is three majors behind what the app is developed
+    # against and rejects code the newer compiler accepts. Pinning to the
+    # runner whose toolchain matches development keeps CI meaningful.
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - name: Check out
@@ -36,7 +40,7 @@ jobs:
 
   package-app:
     name: Package app bundle
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     needs: build-and-test
     steps:

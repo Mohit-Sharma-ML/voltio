@@ -15,6 +15,9 @@ struct MenuBarGlyphView: View {
     var pinnedDevices: [PinnedDevice] = []
     /// Glyph height in points; everything else scales from this.
     var height: CGFloat = 15
+    /// Charging-glow intensity (0–1). The live status item animates this to
+    /// pulse the bolt's halo; static callers (settings preview) stay at 1.
+    var glowPhase: Double = 1
 
     /// A pinned accessory's menu-bar state: name, charge fraction, and
     /// low-battery color (nil = normal tint).
@@ -84,10 +87,19 @@ struct MenuBarGlyphView: View {
             .font(.system(size: height * 0.74, weight: .bold))
         return Group {
             if isCharging {
-                // Soft halo so the bolt reads as "actively charging".
+                // Pulsing halo so the bolt reads as "actively charging":
+                // `glowPhase` (a smooth 0–1 sine sweep while plugged in)
+                // breathes both the opacity and the spread of the two shadow
+                // layers, so the halo swells and fades rather than stepping.
                 glyph
-                    .shadow(color: .green.opacity(0.9), radius: height * 0.18)
-                    .shadow(color: .green.opacity(0.55), radius: height * 0.09)
+                    .shadow(
+                        color: .green.opacity(0.85 * glowPhase),
+                        radius: height * 0.18 * (0.55 + 0.45 * glowPhase)
+                    )
+                    .shadow(
+                        color: .green.opacity(0.5 * glowPhase),
+                        radius: height * 0.09 * (0.55 + 0.45 * glowPhase)
+                    )
             } else {
                 glyph
             }
@@ -98,30 +110,33 @@ struct MenuBarGlyphView: View {
         Text(text).font(.system(size: height * 0.84, weight: .semibold))
     }
 
-    /// Authentic system battery artwork with the percentage inside. The glyph
-    /// is the real SF Symbol Apple ships with the OS (the same vector designs
-    /// the system menu bar draws), rendered at runtime via `Image(systemName:)`
-    /// — so it always matches the installed OS design (macOS 26 today, and the
-    /// macOS 27 designs automatically once the OS updates).
-    ///
-    /// The number lives in a *fixed-width* frame, so the glyph's total width is
-    /// constant whether the label is "1", "25", or "100".
+    /// Battery artwork shared by every numeric style: the same SF Symbol body
+    /// `batteryWithFill` uses (so Battery Indicator and Minimal render the
+    /// identical battery), with the percentage as large bold digits filling
+    /// the body interior — the digits are the fill. Same outline, same
+    /// proportions, minimal's chunky feel.
     private func batteryWithText(_ text: String) -> some View {
-        // At point size p the symbol draws 26/15·p wide × 12/15·p tall; a point
-        // size of 1.15·height yields a battery body ≈ 0.92·height tall.
+        // At point size p the symbol draws 26/15·p wide × 12/15·p tall.
         let pointSize = height * 1.15
-        let nubW = pointSize * 0.08        // terminal occupies the trailing ~8%
-        let fontSize = height * 0.58
+        // Three digits are too crowded at the two-digit size. Use a slightly
+        // smaller rounded face for 100 so it has breathing room inside the
+        // battery; keep the larger, heavier treatment for shorter values.
+        let digitFont: Font = text.count >= 3
+            ? .system(size: height * 0.52, weight: .bold, design: .rounded)
+            : .system(size: height * 0.62, weight: .black)
         return ZStack {
             Image(systemName: "battery.0percent")
                 .font(.system(size: pointSize))
             Text(text)
-                .font(.system(size: fontSize, weight: .heavy))
+                .font(digitFont)
                 .monospacedDigit()
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.5)
                 .frame(width: pointSize * 1.5, height: pointSize * 0.75)
-                // Center the number in the body, left of the terminal nub.
-                .offset(x: -nubW / 2)
+                // Center the number in the BODY (not the symbol): the frame
+                // is wider than the body and the terminal nub skews the
+                // symbol's optical center — without this shift the digits sit
+                // visibly right of center. Calibrated by pixel measurement.
+                .offset(x: -pointSize * 0.08)
         }
     }
 
@@ -148,7 +163,12 @@ struct MenuBarGlyphView: View {
 /// Builds the menu-bar glyph (as a live view or a rasterized status-item image).
 @MainActor
 enum MenuBarRender {
-    static func glyphView(settings: AppSettings, model: BatteryModel, height: CGFloat? = nil) -> MenuBarGlyphView {
+    static func glyphView(
+        settings: AppSettings,
+        model: BatteryModel,
+        height: CGFloat? = nil,
+        glowPhase: Double = 1
+    ) -> MenuBarGlyphView {
         MenuBarGlyphView(
             style: settings.menuBarIconStyle,
             value: settings.menuBarValue,
@@ -158,8 +178,30 @@ enum MenuBarRender {
             pinnedDevices: pinnedDevices(settings: settings, model: model),
             // Default to the user's chosen icon size; callers may override
             // (e.g. the settings preview uses its own strip height).
-            height: height ?? settings.menuBarIconSize.glyphHeight
+            height: height ?? settings.menuBarIconSize.glyphHeight,
+            glowPhase: glowPhase
         )
+    }
+
+    /// Menu-bar label. The charging bolt's halo breathes: `model.pulsePhase`
+    /// (driven by a timer inside the model, active only while charging) is an
+    /// observed property, so every step re-evaluates this body and re-rasterizes
+    /// the glyph with the new glow level — the status item content itself can't
+    /// be animated with TimelineView (its ticks never re-render a MenuBarExtra
+    /// label), but observed-state changes do.
+    @ViewBuilder
+    static func animatedLabel(settings: AppSettings, model: BatteryModel) -> some View {
+        // Reading menuBarCharging here keeps the label observing plug state;
+        // the glow level itself rides on the observed pulsePhase.
+        let charging = model.snapshot?.menuBarCharging ?? false
+        // Phase rounded to 2 decimals: ticks that round to the same level
+        // reuse the currently cached bitmap.
+        let phase = (model.pulsePhase * 100).rounded() / 100
+        if let image = image(settings: settings, model: model, glowPhase: charging ? phase : 1) {
+            Image(nsImage: image)
+        } else {
+            Text(model.menuBarTitle)
+        }
     }
 
     /// Current state of the user's pinned devices, in display order. Only
@@ -192,6 +234,7 @@ enum MenuBarRender {
         let tint: Color
         let scale: CGFloat
         let pinnedDevices: [MenuBarGlyphView.PinnedDevice]
+        let glowPhase: Double
     }
 
     private static var cacheKey: Key?
@@ -203,7 +246,9 @@ enum MenuBarRender {
     ///
     /// Cached by `Key`: `ImageRenderer` only runs when the visible glyph actually
     /// changes, so repeated SwiftUI re-evaluations on a steady battery are free.
-    static func image(settings: AppSettings, model: BatteryModel) -> NSImage? {
+    /// `glowPhase` (default 1) animates the charging bolt's halo and is part
+    /// of the cache key so unchanged pulse levels reuse the bitmap.
+    static func image(settings: AppSettings, model: BatteryModel, glowPhase: Double = 1) -> NSImage? {
         // Keyed on plug-in (instant) rather than the lagging `IsCharging` flag.
         let charging = model.snapshot?.menuBarCharging ?? false
         // While charging we always render in color so the green bolt + glow show,
@@ -211,7 +256,6 @@ enum MenuBarRender {
         let colored = settings.statusColors || charging
         let tint: Color = colored ? (model.menuBarTint ?? .white) : .white
         let scale = NSScreen.main?.backingScaleFactor ?? 2
-
         // Reading these properties here also keeps SwiftUI's observation tracking
         // intact, so the label still re-evaluates when the state changes.
         let pinned = pinnedDevices(settings: settings, model: model)
@@ -225,11 +269,16 @@ enum MenuBarRender {
             colored: colored,
             tint: tint,
             scale: scale,
-            pinnedDevices: pinned
+            pinnedDevices: pinned,
+            glowPhase: charging ? glowPhase : 1
         )
         if key == cacheKey, let cachedImage { return cachedImage }
 
-        let content = glyphView(settings: settings, model: model)
+        let content = glyphView(
+            settings: settings,
+            model: model,
+            glowPhase: charging ? glowPhase : 1
+        )
             .foregroundStyle(tint)
             .padding(.horizontal, 2)
             // Extra vertical headroom on large glyphs so the charging glow

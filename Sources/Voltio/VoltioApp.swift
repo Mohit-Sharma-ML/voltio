@@ -26,7 +26,7 @@ struct VoltioApp: App {
             MenuPanelView(model: model, settings: settings)
                 .installOpenWindowBridge()
         } label: {
-            menuBarLabel
+            MenuBarRender.animatedLabel(settings: settings, model: model)
         }
         .menuBarExtraStyle(.window)
         // First launch only; dismissed via "Get Started".
@@ -36,14 +36,6 @@ struct VoltioApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
-    }
-
-    @ViewBuilder private var menuBarLabel: some View {
-        if let image = MenuBarRender.image(settings: settings, model: model) {
-            Image(nsImage: image)
-        } else {
-            Text(model.menuBarTitle)
-        }
     }
 }
 

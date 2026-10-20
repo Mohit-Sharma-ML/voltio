@@ -110,30 +110,33 @@ struct MenuBarGlyphView: View {
         Text(text).font(.system(size: height * 0.84, weight: .semibold))
     }
 
-    /// Authentic system battery artwork with the percentage inside. The glyph
-    /// is the real SF Symbol Apple ships with the OS (the same vector designs
-    /// the system menu bar draws), rendered at runtime via `Image(systemName:)`
-    /// — so it always matches the installed OS design (macOS 26 today, and the
-    /// macOS 27 designs automatically once the OS updates).
-    ///
-    /// The number lives in a *fixed-width* frame, so the glyph's total width is
-    /// constant whether the label is "1", "25", or "100".
+    /// Battery artwork shared by every numeric style: the same SF Symbol body
+    /// `batteryWithFill` uses (so Battery Indicator and Minimal render the
+    /// identical battery), with the percentage as large bold digits filling
+    /// the body interior — the digits are the fill. Same outline, same
+    /// proportions, minimal's chunky feel.
     private func batteryWithText(_ text: String) -> some View {
-        // At point size p the symbol draws 26/15·p wide × 12/15·p tall; a point
-        // size of 1.15·height yields a battery body ≈ 0.92·height tall.
+        // At point size p the symbol draws 26/15·p wide × 12/15·p tall.
         let pointSize = height * 1.15
-        let nubW = pointSize * 0.08        // terminal occupies the trailing ~8%
-        let fontSize = height * 0.58
+        // Three digits are too crowded at the two-digit size. Use a slightly
+        // smaller rounded face for 100 so it has breathing room inside the
+        // battery; keep the larger, heavier treatment for shorter values.
+        let digitFont: Font = text.count >= 3
+            ? .system(size: height * 0.52, weight: .bold, design: .rounded)
+            : .system(size: height * 0.62, weight: .black)
         return ZStack {
             Image(systemName: "battery.0percent")
                 .font(.system(size: pointSize))
             Text(text)
-                .font(.system(size: fontSize, weight: .heavy))
+                .font(digitFont)
                 .monospacedDigit()
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.5)
                 .frame(width: pointSize * 1.5, height: pointSize * 0.75)
-                // Center the number in the body, left of the terminal nub.
-                .offset(x: -nubW / 2)
+                // Center the number in the BODY (not the symbol): the frame
+                // is wider than the body and the terminal nub skews the
+                // symbol's optical center — without this shift the digits sit
+                // visibly right of center. Calibrated by pixel measurement.
+                .offset(x: -pointSize * 0.08)
         }
     }
 

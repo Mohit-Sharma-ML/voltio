@@ -1,0 +1,75 @@
+name: Release
+
+# Builds, verifies, and attests the DMG for a pushed v* tag, then attaches it to
+# the GitHub release. Publishing the release itself stays manual (`gh release
+# create`), so a maintainer still decides when a version goes live.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write      # upload the DMG + release assets
+  id-token: write      # OIDC, required for build provenance attestation
+  attestations: write  # artifact attestation
+
+jobs:
+  release:
+    name: Build & attest DMG
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the tag matches the plist version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
+          echo "tag=$TAG plist=$VERSION"
+          test "$TAG" = "$VERSION" || {
+            echo "::error::Tag $TAG does not match CFBundleShortVersionString $VERSION"
+            exit 1
+          }
+
+      # Same rationale as CI: no developer certificate in Actions, so the DMG
+      # is ad-hoc signed. This artifact is for checksum/attestation parity and
+      # smoke verification — the maintainer's locally built, development-signed
+      # DMG remains the published download until notarization is available.
+      - name: Provide a placeholder Team ID
+        run: echo "ABCDE12345" > TeamID.local
+
+      - name: Build the DMG
+        env:
+          CODE_SIGN_IDENTITY: "-"
+        run: |
+          DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/dist.sh
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          set -euo pipefail
+          SHA=$(shasum -a 256 dist/Voltio.dmg | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA-256: $SHA"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/Voltio.dmg
+
+      - name: Attach DMG and checksum to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # `gh release upload` fails if the tag has no release yet; create a
+          # draft in that case so the maintainer only has to publish it.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" dist/Voltio.dmg --clobber
+          printf '%s  Voltio.dmg\n' "$SHA256" > dist/Voltio.dmg.sha256
+          gh release upload "$GITHUB_REF_NAME" dist/Voltio.dmg.sha256 --clobber

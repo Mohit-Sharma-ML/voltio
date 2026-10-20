@@ -59,11 +59,13 @@ enum AlertColor: String, Codable, Hashable, CaseIterable, Identifiable {
 }
 
 /// The sound played when an alert fires. System sounds ship with macOS; custom
-/// sounds point at a user-imported audio file on disk (we're non-sandboxed).
+/// sounds are copied into the app container on import (see
+/// `AlertSoundLibrary`), so the stored path stays readable across relaunches
+/// under the App Sandbox.
 enum AlertSound: Codable, Hashable {
     case none
     case system(String)
-    case custom(String)   // absolute file path
+    case custom(String)   // path inside the app's sound library
 
     /// Built-in macOS system sounds offered in the picker, with friendly names.
     static let presets: [AlertSound] = [
@@ -97,6 +99,17 @@ enum AlertSound: Codable, Hashable {
     ]
 
     var isNone: Bool { if case .none = self { return true } else { return false } }
+
+    /// True when a custom sound's file is still readable. Non-custom entries
+    /// are always available. Used by the alerts UI to flag sounds that went
+    /// missing (for example an entry persisted before sounds were copied into
+    /// the container) instead of silently playing nothing.
+    var isAvailable: Bool {
+        switch self {
+        case .custom(let path): return AlertSoundLibrary.isAvailable(path)
+        default: return true
+        }
+    }
 }
 
 /// One configurable battery alert: a threshold

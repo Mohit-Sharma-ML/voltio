@@ -339,6 +339,7 @@ private struct PositionPicker: View {
 struct SoundPickerMenu: View {
     @Binding var sound: AlertSound
     var maxWidth: CGFloat = 320
+    @State private var importError: String?
 
     var body: some View {
         Menu {
@@ -357,6 +358,17 @@ struct SoundPickerMenu: View {
                 } label: {
                     Label("\(sound.label) (current)", systemImage: "checkmark")
                 }
+                if !sound.isAvailable {
+                    // Entry points at a file that no longer resolves — either
+                    // the user deleted the stored copy or it predates sounds
+                    // being copied into the container.
+                    Button {
+                        sound = .none
+                        importError = nil
+                    } label: {
+                        Label("Sound file is missing — use No Sound", systemImage: "exclamationmark.triangle")
+                    }
+                }
             }
             Divider()
             Button {
@@ -369,6 +381,11 @@ struct SoundPickerMenu: View {
                 Image(systemName: sound.isNone ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .foregroundStyle(.secondary)
                 Text(sound.label)
+                if case .custom = sound, !sound.isAvailable {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                }
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 10))
@@ -388,6 +405,17 @@ struct SoundPickerMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: maxWidth)
+        .alert(
+            "Couldn't Import Sound",
+            isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
+        }
     }
 
     private func importCustomSound() {
@@ -397,9 +425,18 @@ struct SoundPickerMenu: View {
         panel.canChooseDirectories = false
         panel.prompt = "Use Sound"
         panel.message = "Choose an audio file for this alert (MP3, WAV, M4A, AIFF)."
-        if panel.runModal() == .OK, let url = panel.url {
-            sound = .custom(url.path)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Copy into the container rather than storing the picked path: the
+        // sandbox grant on `url` does not survive relaunch, so a bare path
+        // would silently stop playing.
+        switch AlertSoundLibrary.importSound(from: url) {
+        case .imported(let path):
+            sound = .custom(path)
             SoundPreview.play(sound)
+        case .tooLarge(let bytes):
+            importError = "That file is \(Format.bytes(bytes)). Alert sounds must be under \(Format.bytes(AlertSoundLibrary.maxImportBytes))."
+        case .failed(let reason):
+            importError = "Could not import that sound: \(reason)"
         }
     }
 }

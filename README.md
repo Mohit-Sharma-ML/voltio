@@ -37,7 +37,7 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 
 ### Battery details
 - Charge level, charging/plugged state, and time to full / time to empty.
-- Health as a percentage of design capacity, plus cycle count, current/max/design capacity (mAh), temperature, voltage, and amperage.
+- Health as a percentage of original capacity (matching the Maximum Capacity macOS reports), plus cycle count, current/max/design capacity (mAh), temperature, voltage, and amperage.
 - Adapter wattage and name, system power draw, and net battery power (watts).
 
 ### Power flow
@@ -77,9 +77,17 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 Download **[Voltio.dmg](https://github.com/Mohit-Sharma-ML/voltio/releases/latest)** from
 Releases, open it, and drag **Voltio** into **Applications**.
 
-> **First launch:** because the DMG is ad-hoc signed (notarization is planned), macOS may
-> warn that the app "can't be opened." Right-click **Voltio.app → Open → Open** once —
-> after that it launches normally.
+> **First launch:** because the DMG is not notarized yet (a Developer ID
+> certificate is required), macOS may warn that the app "can't be opened."
+> Right-click **Voltio.app → Open → Open** once — after that it launches
+> normally.
+>
+> Each release lists the DMG's **SHA-256**. Verify your download before opening
+> it:
+>
+> ```bash
+> shasum -a 256 ~/Downloads/Voltio.dmg     # compare with the release notes
+> ```
 
 ## Requirements
 
@@ -154,10 +162,10 @@ special entitlements; Bluetooth access is gated by the standard user prompt.
 │   ├── Voltio/         The app: SwiftUI views, AppKit windows, IOKit/BLE/HID
 │   │                   integration, alerts, settings, snapshot publishing.
 │   └── VoltioWidgets/  The WidgetKit extension (small + medium widgets).
-├── Tests/              PowerCoreTests + VoltioTests (75 XCTests).
+├── Tests/              PowerCoreTests + VoltioTests (74 tests: XCTest + Swift Testing).
 ├── Resources/          App icon, Info.plists, entitlement templates.
 ├── assets/             Screenshots used by this README.
-└── scripts/            build_app.sh · make_icns.sh · dist.sh
+└── scripts/            build_app.sh · make_icns.sh · dist.sh · release_checksum.sh
 ```
 
 ## Architecture

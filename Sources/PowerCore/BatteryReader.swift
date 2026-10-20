@@ -60,6 +60,7 @@ public struct BatteryReader: Sendable {
             currentCapacitymAh: intValue(d["AppleRawCurrentCapacity"]) ?? 0,
             maxCapacitymAh: intValue(d["AppleRawMaxCapacity"]) ?? 0,
             designCapacitymAh: intValue(d["DesignCapacity"]) ?? 0,
+            nominalCapacitymAh: intValue(d["NominalChargeCapacity"]),
             adapterWatts: intValue(adapter?["Watts"]),
             adapterName: (adapter?["Name"] as? String)?.trimmingCharacters(in: .whitespaces),
             systemPowerWatts: milliWattsToWatts(telemetry?["SystemPowerIn"]),

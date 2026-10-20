@@ -31,6 +31,17 @@ public struct BatterySnapshot: Sendable, Equatable {
     public let currentCapacitymAh: Int
     public let maxCapacitymAh: Int
     public let designCapacitymAh: Int
+    /// Apple's own health-adjusted full-charge capacity (`NominalChargeCapacity`).
+    ///
+    /// The gauge reports two different "full" figures: `AppleRawMaxCapacity`,
+    /// the raw pack maximum used for the Capacity card's mAh math, and this
+    /// nominal value, which macOS smooths and compensates before deriving the
+    /// Battery Health percentage it shows in System Settings and
+    /// `system_profiler`. They routinely differ by several points — e.g. raw
+    /// 7,911 mAh vs nominal 8,155 mAh against an 8,579 mAh design capacity
+    /// reads as 92% vs 95%. `nil` when the firmware doesn't publish it, in
+    /// which case health falls back to the raw ratio.
+    public let nominalCapacitymAh: Int?
 
     public let adapterWatts: Int?
     public let adapterName: String?
@@ -66,6 +77,7 @@ public struct BatterySnapshot: Sendable, Equatable {
         currentCapacitymAh: Int,
         maxCapacitymAh: Int,
         designCapacitymAh: Int,
+        nominalCapacitymAh: Int? = nil,
         adapterWatts: Int?,
         adapterName: String?,
         systemPowerWatts: Double?,
@@ -88,6 +100,7 @@ public struct BatterySnapshot: Sendable, Equatable {
         self.currentCapacitymAh = currentCapacitymAh
         self.maxCapacitymAh = maxCapacitymAh
         self.designCapacitymAh = designCapacitymAh
+        self.nominalCapacitymAh = nominalCapacitymAh
         self.adapterWatts = adapterWatts
         self.adapterName = adapterName
         self.systemPowerWatts = systemPowerWatts
@@ -98,10 +111,16 @@ public struct BatterySnapshot: Sendable, Equatable {
     }
 
     /// Battery health as a whole percentage of original (design) capacity.
-    /// Uses integer flooring to match how macOS battery tools present the value.
+    ///
+    /// Prefers Apple's nominal (health-adjusted) capacity when the firmware
+    /// publishes it, so this number matches the "Maximum Capacity" percentage
+    /// macOS shows in System Settings → Battery and `system_profiler`. Falls
+    /// back to the raw `maxCapacitymAh` ratio on packs that don't report it.
+    /// Integer flooring matches how macOS presents the value.
     public var healthPercent: Int {
         guard designCapacitymAh > 0 else { return 0 }
-        return maxCapacitymAh * 100 / designCapacitymAh
+        let full = nominalCapacitymAh.flatMap { $0 > 0 ? $0 : nil } ?? maxCapacitymAh
+        return full * 100 / designCapacitymAh
     }
 
     /// Charge stored now as a percentage of the pack's measured full-charge
@@ -152,6 +171,7 @@ public struct BatterySnapshot: Sendable, Equatable {
             currentCapacitymAh: currentCapacitymAh,
             maxCapacitymAh: maxCapacitymAh,
             designCapacitymAh: designCapacitymAh,
+            nominalCapacitymAh: nominalCapacitymAh,
             adapterWatts: adapterWatts,
             adapterName: adapterName,
             systemPowerWatts: systemPowerWatts,

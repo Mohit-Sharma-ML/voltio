@@ -1,75 +1,88 @@
-name: Release
+name: Release checks
 
-# Builds, verifies, and attests the DMG for a pushed v* tag, then attaches it to
-# the GitHub release. Publishing the release itself stays manual (`gh release
-# create`), so a maintainer still decides when a version goes live.
+# Verification only — deliberately does NOT build or upload a DMG.
+#
+# Why not build here: the DMG must be signed with a real "Apple Development"
+# identity. scripts/build_app.sh documents that ad-hoc signing ("-") breaks the
+# widget extension (containermanagerd rejects team-less signatures, so the
+# widget never appears in the gallery). GitHub-hosted runners have no signing
+# certificate, so a workflow-built DMG would be a broken artifact.
+#
+# The maintainer therefore builds and uploads from a machine with the
+# certificate; this workflow blocks a tag that should not become a release.
+# See Docs/RELEASING.md for the full procedure.
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write      # upload the DMG + release assets
-  id-token: write      # OIDC, required for build provenance attestation
-  attestations: write  # artifact attestation
+  contents: read
 
 jobs:
-  release:
-    name: Build & attest DMG
+  verify:
+    name: Verify tag is release-ready
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Check out
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Verify the tag matches the plist version
+      - name: Tag matches the bundled version
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
-          echo "tag=$TAG plist=$VERSION"
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/Voltio-Info.plist)
+          WIDGET_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/VoltioWidgets-Info.plist)
+          WIDGET_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/VoltioWidgets-Info.plist)
+          echo "tag=$TAG app=$VERSION($BUILD) widget=$WIDGET_VERSION($WIDGET_BUILD)"
           test "$TAG" = "$VERSION" || {
             echo "::error::Tag $TAG does not match CFBundleShortVersionString $VERSION"
             exit 1
           }
+          # The app and its extension must agree, or WidgetKit reports a
+          # mismatched bundle version.
+          test "$VERSION" = "$WIDGET_VERSION" || {
+            echo "::error::App and widget versions differ ($VERSION vs $WIDGET_VERSION)"
+            exit 1
+          }
+          test "$BUILD" = "$WIDGET_BUILD" || {
+            echo "::error::App and widget build numbers differ ($BUILD vs $WIDGET_BUILD)"
+            exit 1
+          }
 
-      # Same rationale as CI: no developer certificate in Actions, so the DMG
-      # is ad-hoc signed. This artifact is for checksum/attestation parity and
-      # smoke verification — the maintainer's locally built, development-signed
-      # DMG remains the published download until notarization is available.
-      - name: Provide a placeholder Team ID
-        run: echo "ABCDE12345" > TeamID.local
-
-      - name: Build the DMG
-        env:
-          CODE_SIGN_IDENTITY: "-"
-        run: |
-          DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/dist.sh
-
-      - name: Compute checksum
-        id: checksum
+      - name: CHANGELOG documents this version
         run: |
           set -euo pipefail
-          SHA=$(shasum -a 256 dist/Voltio.dmg | awk '{print $1}')
-          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
-          echo "SHA-256: $SHA"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
+          grep -q "## \[$VERSION\]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section"
+            exit 1
+          }
 
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: dist/Voltio.dmg
+      - name: Tag commit is on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at a commit that is not on main"
+            exit 1
+          fi
+          echo "✔ $GITHUB_REF_NAME is an ancestor of origin/main"
 
-      - name: Attach DMG and checksum to the release
+      # A tag alone must never publish: the DMG is uploaded by hand after a
+      # local build. Creating the release here as a DRAFT gives the maintainer a
+      # place to attach artifacts without exposing an empty release to users.
+      - name: Create draft release if absent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA256: ${{ steps.checksum.outputs.sha256 }}
         run: |
           set -euo pipefail
-          # `gh release upload` fails if the tag has no release yet; create a
-          # draft in that case so the maintainer only has to publish it.
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME"
-          gh release upload "$GITHUB_REF_NAME" dist/Voltio.dmg --clobber
-          printf '%s  Voltio.dmg\n' "$SHA256" > dist/Voltio.dmg.sha256
-          gh release upload "$GITHUB_REF_NAME" dist/Voltio.dmg.sha256 --clobber
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists — leaving it untouched."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" \
+            --notes "Draft created by CI. Attach Voltio.dmg and Voltio.dmg.sha256 from a signed local build (see Docs/RELEASING.md), then publish."

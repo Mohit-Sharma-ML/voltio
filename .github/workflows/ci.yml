@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref — this is a low-traffic repo and
+# macOS runners are the expensive part.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Pinned to the Xcode toolchain: a standalone/swiftly Swift that shadows
+      # Xcode's fails the test targets (see CONTRIBUTING.md).
+      - name: Run tests
+        run: |
+          DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test
+
+  package-app:
+    name: Package app bundle
+    runs-on: macos-15
+    timeout-minutes: 25
+    needs: build-and-test
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # build_app.sh requires a Team ID to stamp the App Group and sign the
+      # bundle. CI has no signing identity, so it generates a placeholder and
+      # signs ad-hoc — enough to prove the bundling path works (plists, appex
+      # layout, icon) without needing repository secrets.
+      - name: Provide a placeholder Team ID
+        run: echo "ABCDE12345" > TeamID.local
+
+      - name: Build the app bundle
+        env:
+          CODE_SIGN_IDENTITY: "-"
+        run: |
+          DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/build_app.sh
+
+      - name: Verify bundle layout
+        run: |
+          set -euo pipefail
+          APP=dist/Voltio.app
+          test -x "$APP/Contents/MacOS/Voltio"
+          test -d "$APP/Contents/PlugIns/VoltioWidgets.appex"
+          # The version in the built bundle must match the plist in source —
+          # catches a forgotten bump before it reaches a release.
+          BUILT=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+          SOURCE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
+          echo "built=$BUILT source=$SOURCE"
+          test "$BUILT" = "$SOURCE"
+
+      - name: Check CHANGELOG covers the current version
+        run: |
+          set -euo pipefail
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
+          # A version bump without a changelog entry is the most common release
+          # slip; fail loudly instead of publishing an undocumented release.
+          grep -q "## \[$VERSION\]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section"
+            exit 1
+          }

@@ -3,6 +3,19 @@
 All notable changes to Voltio are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-20
+
+### Fixed
+- Battery Health now matches the "Maximum Capacity" percentage macOS reports in System Settings and `system_profiler`. Voltio previously divided the raw pack maximum by design capacity, which read several points low (e.g. 92% where macOS showed 95%).
+
+### Changed
+- Custom alert sounds are copied into the app container on import, so they keep working after relaunch and no longer break if the original file is moved or deleted. Missing sound files are now flagged in the picker instead of failing silently.
+
+### Added
+- Continuous integration: build and full test suite on every pull request, plus bundle-layout, version-match, and changelog checks.
+- Release workflow that builds the DMG on a version tag, produces a `.sha256` file, and publishes build provenance attestation.
+- `scripts/release_checksum.sh` for generating and verifying DMG checksums.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added
@@ -34,7 +47,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the project 
 - Bluetooth accessory battery levels (AirPods, Magic devices) with per-device alerts.
 - Power flow visualization with live wattage and adapter identification.
 
-[Unreleased]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Mohit-Sharma-ML/voltio/compare/v0.3.0...v0.3.2

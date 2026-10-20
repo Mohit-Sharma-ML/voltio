@@ -54,7 +54,9 @@ final class BatteryReaderParseTests: XCTestCase {
     func testDerivedAndNormalizedValues() {
         let s = BatteryReader.parse(referenceFixture())
 
-        // Health floors to 98 (8481 / 8579 = 98.85%), matching macOS tools.
+        // No NominalChargeCapacity in this fixture, so health falls back to the
+        // raw pack maximum: 8481 / 8579 = 98.85%, floored to 98.
+        XCTAssertNil(s.nominalCapacitymAh)
         XCTAssertEqual(s.healthPercent, 98)
         // Pack charge ratio floors to 96 (8158 / 8481 = 96.19%).
         XCTAssertEqual(s.packChargePercent, 96)
@@ -62,6 +64,33 @@ final class BatteryReaderParseTests: XCTestCase {
         XCTAssertEqual(s.temperatureFahrenheit, 86.9, accuracy: 0.05)
         XCTAssertEqual(s.voltage, 12.912, accuracy: 0.0001)
         XCTAssertEqual(s.systemPowerWatts ?? 0, 32.713, accuracy: 0.0001)
+    }
+
+    /// macOS derives its System Settings "Maximum Capacity" from
+    /// `NominalChargeCapacity`, not from `AppleRawMaxCapacity`, so the two can
+    /// disagree by several points (observed: raw 92% vs nominal 95%). Health
+    /// must follow the nominal figure so Voltio matches the OS.
+    func testHealthPrefersNominalCapacity() {
+        var fixture = referenceFixture()
+        fixture["NominalChargeCapacity"] = 8155
+
+        let s = BatteryReader.parse(fixture)
+        XCTAssertEqual(s.nominalCapacitymAh, 8155)
+        // Raw ratio would be 98%; nominal gives 8155 / 8579 = 95.05% -> 95.
+        XCTAssertEqual(s.healthPercent, 95)
+        // The Capacity card's pack math must keep using the raw maximum.
+        XCTAssertEqual(s.maxCapacitymAh, 8481)
+        XCTAssertEqual(s.packChargePercent, 96)
+    }
+
+    /// A firmware that reports zero or a negative nominal capacity must not
+    /// zero out health — fall back to the raw maximum instead.
+    func testHealthIgnoresNonPositiveNominalCapacity() {
+        var fixture = referenceFixture()
+        fixture["NominalChargeCapacity"] = 0
+
+        let s = BatteryReader.parse(fixture)
+        XCTAssertEqual(s.healthPercent, 98)
     }
 
     func testTwosComplementCurrentIsSigned() {

@@ -50,6 +50,14 @@ final class BatteryModel {
     /// EMA-smoothed battery power in watts, for the power flow gauges.
     private(set) var smoothedPowerWatts: Double?
 
+    /// Charging-glow phase for the menu-bar bolt (0–1). A timer advances it in
+    /// a triangle wave only while plugged in, so the status item's halo
+    /// "breathes"; on battery the timer is parked and the phase rests at 1.
+    /// Observed by the menu-bar label — the only animation channel that
+    /// actually re-renders a MenuBarExtra status item.
+    private(set) var pulsePhase: Double = 1
+    private var pulseTimer: Timer?
+
     /// Per-day energy history (oldest first), including today's running total.
     var energyHistory: [EnergyAggregator.DayTotal] { energy.dailyTotals }
 
@@ -130,6 +138,7 @@ final class BatteryModel {
     /// alert manager remembers is the pre-sleep one. Cache the last reading.
     private func handleSleep() {
         preSleepReading = _snapshot
+        parkPulseTimer()
     }
 
     /// On wake, re-evaluate the battery immediately: the Mac may have crossed an
@@ -147,6 +156,38 @@ final class BatteryModel {
         recordEnergy(for: reading)
         alerts.evaluate(reading)
         refreshAccessories()
+        updatePulseTimer(charging: reading.isPluggedIn)
+    }
+
+    // MARK: Charging-glow pulse
+
+    /// Runs the bolt-glow breathe cycle while plugged in. A true sine wave at
+    /// ~12 fps: `pulsePhase` itself stays unquantized (smooth), while the
+    /// raster cache key rounds it to 2 decimals so each distinct level renders
+    /// once and repeats hit the cache — ~17 renders per 1.4s cycle, ~12/sec,
+    /// each a tiny 33×24-pt bitmap.
+    private func updatePulseTimer(charging: Bool) {
+        if charging {
+            guard pulseTimer == nil else { return }
+            pulseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let t = Date().timeIntervalSinceReferenceDate
+                    // Sine breathe: (1 − cos) maps 0→1→0 smoothly over 1.4s.
+                    let wave = (1 - cos(t / 1.4 * 2 * .pi)) / 2
+                    self.pulsePhase = wave
+                }
+            }
+        } else {
+            parkPulseTimer()
+        }
+    }
+
+    /// Stops the pulse and restores the full-strength halo on battery or sleep.
+    private func parkPulseTimer() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+        if pulsePhase != 1 { pulsePhase = 1 }
     }
 
     /// Last reading before sleep; kept only so catch-up evaluation has a
@@ -194,6 +235,7 @@ final class BatteryModel {
             lastError = nil
             recordEnergy(for: reading)
             refreshChargeLimit()
+            updatePulseTimer(charging: reading.isPluggedIn)
         } catch {
             lastError = String(describing: error)
         }

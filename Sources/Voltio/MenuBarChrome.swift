@@ -15,6 +15,9 @@ struct MenuBarGlyphView: View {
     var pinnedDevices: [PinnedDevice] = []
     /// Glyph height in points; everything else scales from this.
     var height: CGFloat = 15
+    /// Charging-glow intensity (0–1). The live status item animates this to
+    /// pulse the bolt's halo; static callers (settings preview) stay at 1.
+    var glowPhase: Double = 1
 
     /// A pinned accessory's menu-bar state: name, charge fraction, and
     /// low-battery color (nil = normal tint).
@@ -84,10 +87,19 @@ struct MenuBarGlyphView: View {
             .font(.system(size: height * 0.74, weight: .bold))
         return Group {
             if isCharging {
-                // Soft halo so the bolt reads as "actively charging".
+                // Pulsing halo so the bolt reads as "actively charging":
+                // `glowPhase` (a smooth 0–1 sine sweep while plugged in)
+                // breathes both the opacity and the spread of the two shadow
+                // layers, so the halo swells and fades rather than stepping.
                 glyph
-                    .shadow(color: .green.opacity(0.9), radius: height * 0.18)
-                    .shadow(color: .green.opacity(0.55), radius: height * 0.09)
+                    .shadow(
+                        color: .green.opacity(0.85 * glowPhase),
+                        radius: height * 0.18 * (0.55 + 0.45 * glowPhase)
+                    )
+                    .shadow(
+                        color: .green.opacity(0.5 * glowPhase),
+                        radius: height * 0.09 * (0.55 + 0.45 * glowPhase)
+                    )
             } else {
                 glyph
             }
@@ -148,7 +160,12 @@ struct MenuBarGlyphView: View {
 /// Builds the menu-bar glyph (as a live view or a rasterized status-item image).
 @MainActor
 enum MenuBarRender {
-    static func glyphView(settings: AppSettings, model: BatteryModel, height: CGFloat? = nil) -> MenuBarGlyphView {
+    static func glyphView(
+        settings: AppSettings,
+        model: BatteryModel,
+        height: CGFloat? = nil,
+        glowPhase: Double = 1
+    ) -> MenuBarGlyphView {
         MenuBarGlyphView(
             style: settings.menuBarIconStyle,
             value: settings.menuBarValue,
@@ -158,8 +175,30 @@ enum MenuBarRender {
             pinnedDevices: pinnedDevices(settings: settings, model: model),
             // Default to the user's chosen icon size; callers may override
             // (e.g. the settings preview uses its own strip height).
-            height: height ?? settings.menuBarIconSize.glyphHeight
+            height: height ?? settings.menuBarIconSize.glyphHeight,
+            glowPhase: glowPhase
         )
+    }
+
+    /// Menu-bar label. The charging bolt's halo breathes: `model.pulsePhase`
+    /// (driven by a timer inside the model, active only while charging) is an
+    /// observed property, so every step re-evaluates this body and re-rasterizes
+    /// the glyph with the new glow level — the status item content itself can't
+    /// be animated with TimelineView (its ticks never re-render a MenuBarExtra
+    /// label), but observed-state changes do.
+    @ViewBuilder
+    static func animatedLabel(settings: AppSettings, model: BatteryModel) -> some View {
+        // Reading menuBarCharging here keeps the label observing plug state;
+        // the glow level itself rides on the observed pulsePhase.
+        let charging = model.snapshot?.menuBarCharging ?? false
+        // Phase rounded to 2 decimals: ticks that round to the same level
+        // reuse the currently cached bitmap.
+        let phase = (model.pulsePhase * 100).rounded() / 100
+        if let image = image(settings: settings, model: model, glowPhase: charging ? phase : 1) {
+            Image(nsImage: image)
+        } else {
+            Text(model.menuBarTitle)
+        }
     }
 
     /// Current state of the user's pinned devices, in display order. Only
@@ -192,6 +231,7 @@ enum MenuBarRender {
         let tint: Color
         let scale: CGFloat
         let pinnedDevices: [MenuBarGlyphView.PinnedDevice]
+        let glowPhase: Double
     }
 
     private static var cacheKey: Key?
@@ -203,7 +243,9 @@ enum MenuBarRender {
     ///
     /// Cached by `Key`: `ImageRenderer` only runs when the visible glyph actually
     /// changes, so repeated SwiftUI re-evaluations on a steady battery are free.
-    static func image(settings: AppSettings, model: BatteryModel) -> NSImage? {
+    /// `glowPhase` (default 1) animates the charging bolt's halo and is part
+    /// of the cache key so unchanged pulse levels reuse the bitmap.
+    static func image(settings: AppSettings, model: BatteryModel, glowPhase: Double = 1) -> NSImage? {
         // Keyed on plug-in (instant) rather than the lagging `IsCharging` flag.
         let charging = model.snapshot?.menuBarCharging ?? false
         // While charging we always render in color so the green bolt + glow show,
@@ -211,7 +253,6 @@ enum MenuBarRender {
         let colored = settings.statusColors || charging
         let tint: Color = colored ? (model.menuBarTint ?? .white) : .white
         let scale = NSScreen.main?.backingScaleFactor ?? 2
-
         // Reading these properties here also keeps SwiftUI's observation tracking
         // intact, so the label still re-evaluates when the state changes.
         let pinned = pinnedDevices(settings: settings, model: model)
@@ -225,11 +266,16 @@ enum MenuBarRender {
             colored: colored,
             tint: tint,
             scale: scale,
-            pinnedDevices: pinned
+            pinnedDevices: pinned,
+            glowPhase: charging ? glowPhase : 1
         )
         if key == cacheKey, let cachedImage { return cachedImage }
 
-        let content = glyphView(settings: settings, model: model)
+        let content = glyphView(
+            settings: settings,
+            model: model,
+            glowPhase: charging ? glowPhase : 1
+        )
             .foregroundStyle(tint)
             .padding(.horizontal, 2)
             // Extra vertical headroom on large glyphs so the charging glow

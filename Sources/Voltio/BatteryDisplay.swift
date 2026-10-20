@@ -220,6 +220,15 @@ enum Format {
         number(value) + " mAh"
     }
 
+    /// Human-readable byte size, e.g. "512 KB", "18.4 MB". Used by the custom
+    /// alert-sound importer's size cap message.
+    static func bytes(_ value: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(value))
+    }
+
     /// Compact "updated" phrasing, e.g. "just now", "2 min ago", "3d ago".
     static func relative(_ date: Date, now: Date = Date()) -> String {
         let seconds = Int(now.timeIntervalSince(date))

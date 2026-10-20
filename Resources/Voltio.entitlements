@@ -18,8 +18,11 @@
     was sandboxed for widget ingestion).
   - Energy history file lives in the app container
     (EnergyStore resolves its directory dynamically).
-  - Custom alert sounds: absolute paths are read-only via NSOpenPanel-
-    granted access; powerbox grants read access to user-picked files.
+  - Custom alert sounds: picked with NSOpenPanel and copied into the app
+    container on import (AlertSoundLibrary). Both the
+    files.user-selected.read-only entitlement AND the copy are required: the
+    Powerbox grant covers only that pick, so a bare stored path stops being
+    readable after relaunch under the sandbox.
   - Login items: SMAppService works sandboxed.
 
   The __TEAM_ID__ placeholder is replaced at build time by
@@ -34,6 +37,13 @@
 		<string>__TEAM_ID__.group.com.voltio.app</string>
 	</array>
 	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+	<!-- Custom alert sounds are picked with NSOpenPanel and copied into the
+	     app container immediately (see AlertSoundLibrary). The entitlement is
+	     still required: without it the sandbox denies the read of the picked
+	     file, so the copy fails even though Powerbox showed the panel.
+	     Verified: a sandboxed process can stat an outside file but not read it. -->
+	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
 </dict>
 </plist>

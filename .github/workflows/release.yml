@@ -14,9 +14,17 @@ name: Release checks
 on:
   push:
     tags: ['v*']
+  # Manual run for testing the release path without pushing a tag. Safe: the
+  # draft step does nothing when the tag's release already exists.
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  # `contents: write` is required only for the final step, which creates a
+  # DRAFT release so the maintainer has somewhere to attach the signed DMG. It
+  # does not publish anything: a draft stays invisible until `gh release edit
+  # --draft=false`. (Earlier this was `read`, which made that step fail with
+  # HTTP 403 "Resource not accessible by integration".)
+  contents: write
 
 jobs:
   verify:
@@ -32,18 +40,14 @@ jobs:
       - name: Tag matches the bundled version
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME#v}"
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Voltio-Info.plist)
           BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/Voltio-Info.plist)
           WIDGET_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/VoltioWidgets-Info.plist)
           WIDGET_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/VoltioWidgets-Info.plist)
-          echo "tag=$TAG app=$VERSION($BUILD) widget=$WIDGET_VERSION($WIDGET_BUILD)"
-          test "$TAG" = "$VERSION" || {
-            echo "::error::Tag $TAG does not match CFBundleShortVersionString $VERSION"
-            exit 1
-          }
-          # The app and its extension must agree, or WidgetKit reports a
-          # mismatched bundle version.
+          echo "app=$VERSION($BUILD) widget=$WIDGET_VERSION($WIDGET_BUILD) ref=$GITHUB_REF"
+
+          # The app and its extension must always agree, or WidgetKit reports a
+          # mismatched bundle version. This holds for tag pushes and manual runs.
           test "$VERSION" = "$WIDGET_VERSION" || {
             echo "::error::App and widget versions differ ($VERSION vs $WIDGET_VERSION)"
             exit 1
@@ -52,6 +56,19 @@ jobs:
             echo "::error::App and widget build numbers differ ($BUILD vs $WIDGET_BUILD)"
             exit 1
           }
+
+          # A tag must match the bundled version. A manual run on a branch has no
+          # tag to compare against — the remaining checks still apply.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            test "$TAG" = "$VERSION" || {
+              echo "::error::Tag $TAG does not match CFBundleShortVersionString $VERSION"
+              exit 1
+            }
+            echo "✔ tag $TAG matches bundled version $VERSION"
+          else
+            echo "Not a tag push — skipping tag/version comparison."
+          fi
 
       - name: CHANGELOG documents this version
         run: |
@@ -76,6 +93,9 @@ jobs:
       # local build. Creating the release here as a DRAFT gives the maintainer a
       # place to attach artifacts without exposing an empty release to users.
       - name: Create draft release if absent
+        # Only for real tag pushes. A manual workflow_dispatch run on a branch
+        # must not create a release named after that branch.
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -85,4 +105,4 @@ jobs:
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" \
-            --notes "Draft created by CI. Attach Voltio.dmg and Voltio.dmg.sha256 from a signed local build (see Docs/RELEASING.md), then publish."
+            --notes "Draft created by CI. Attach Voltio.dmg and Voltio.dmg.sha256 from a signed local build (see RELEASING.md), then publish."

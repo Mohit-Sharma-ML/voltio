@@ -138,7 +138,8 @@ replaced with verification-only before it could ship.
 
 Making CI build *real* artifacts requires storing a Developer ID certificate and
 its password as repository secrets, plus a rotation plan. That becomes worthwhile
-together with notarization (see `Docs/plans/plan-security-release.md` S4).
+together with notarization (see the security & release plan in `Docs/plans/`,
+which is local-only — `Docs/` is gitignored).
 
 ## Notarized releases (once a paid Apple Developer account exists)
 

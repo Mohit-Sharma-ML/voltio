@@ -33,14 +33,23 @@ Voltio is designed to hold a deliberately small attack surface. Useful context w
 
 ## Release integrity
 
-Releases are built from the tagged commit by the `Release` workflow and include:
+The DMG is built and signed locally from the tagged commit — GitHub Actions has
+no signing certificate, and ad-hoc signing breaks the widget extension, so CI
+verifies the tag rather than producing the artifact.
+
+Each release includes:
 
 - a **`Voltio.dmg.sha256`** file, and
-- a **build provenance attestation** (`gh attestation verify`).
+- the SHA-256 in the release notes.
+
+CI independently checks that a tag matches the bundled version in both the app and
+widget plists, that the changelog documents it, and that the tagged commit is on
+`main`. That gates a bad tag, but it does not vouch for the uploaded binary — the
+checksum is what ties the published file to the release notes.
 
 Releases are currently **not notarized** (that requires a paid Apple Developer account), so Gatekeeper will warn on first launch. Verify the checksum before opening the DMG:
 
 ```bash
 shasum -a 256 ~/Downloads/Voltio.dmg
-gh attestation verify ~/Downloads/Voltio.dmg --repo Mohit-Sharma-ML/voltio
+# compare with the SHA-256 in the release notes
 ```

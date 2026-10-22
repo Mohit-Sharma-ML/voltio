@@ -13,8 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the project 
 
 ### Added
 - Continuous integration: build and full test suite on every pull request, plus bundle-layout, version-match, and changelog checks.
-- Release workflow that builds the DMG on a version tag, produces a `.sha256` file, and publishes build provenance attestation.
-- `scripts/release_checksum.sh` for generating and verifying DMG checksums.
+- Release tag verification: a pushed `v*` tag is checked for version/changelog agreement and `main` ancestry, then a draft release is created for the signed DMG to be attached to.
+- `scripts/release_checksum.sh` for generating and verifying DMG checksums, and `RELEASING.md` documenting the release procedure.
 
 ## [0.5.0] - 2026-10-20
 

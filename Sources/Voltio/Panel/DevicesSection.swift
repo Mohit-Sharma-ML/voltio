@@ -93,7 +93,9 @@ extension MenuPanelView {
     var devicesPlaceholder: some View {
         let message: String
         switch model.bluetoothAccess {
-        case .needsPermission:
+        case .denied:
+            message = "Bluetooth access denied — enable Voltio in System Settings → Privacy & Security → Bluetooth."
+        case .awaitingPermission:
             message = "Allow Bluetooth to see AirPods & accessory battery."
         case .poweredOff:
             message = "Bluetooth is off."

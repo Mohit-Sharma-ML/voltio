@@ -9,7 +9,13 @@ private let btLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Voltio", 
 /// Coarse Bluetooth availability used to drive the Connected Devices UI.
 enum BluetoothAccess: Equatable {
     case scanning
-    case needsPermission
+    /// The user has answered the system prompt with "Don't Allow" (or policy
+    /// restricts it). The prompt will not appear again — the only remedy is the
+    /// Bluetooth privacy pane in System Settings, so callers can offer a link.
+    case denied
+    /// The prompt has not been shown yet. Nothing is broken and no remedy is
+    /// needed; the system asks the first time a scan starts.
+    case awaitingPermission
     case poweredOff
     case unavailable
 }
@@ -77,9 +83,9 @@ final class BluetoothBatteryScanner: NSObject {
     var access: BluetoothAccess {
         switch CBCentralManager.authorization {
         case .denied, .restricted:
-            return .needsPermission
+            return .denied
         case .notDetermined:
-            return .needsPermission
+            return .awaitingPermission
         case .allowedAlways:
             break
         @unknown default:

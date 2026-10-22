@@ -17,10 +17,24 @@ final class PlatformHealthTests: XCTestCase {
     }
 
     func testBluetoothCheckReflectsAccess() {
-        for access in [BluetoothAccess.scanning, .poweredOff, .needsPermission, .unavailable] {
+        for access in [
+            BluetoothAccess.scanning, .poweredOff, .denied,
+            .awaitingPermission, .unavailable,
+        ] {
             let check = PlatformHealth.runChecks(bluetoothAccess: access).first { $0.id == "bt" }
             XCTAssertEqual(check?.passed, access == .scanning)
         }
+    }
+
+    /// A denial needs an actionable remedy (System Settings); "not asked yet" does
+    /// not. They used to be one state, which made the diagnostics text ambiguous.
+    func testBluetoothDenialAndPendingAreDistinguishable() {
+        let denied = PlatformHealth.runChecks(bluetoothAccess: .denied).first { $0.id == "bt" }
+        let pending = PlatformHealth.runChecks(bluetoothAccess: .awaitingPermission).first { $0.id == "bt" }
+
+        XCTAssertNotEqual(denied?.detail, pending?.detail)
+        XCTAssertTrue(denied?.detail.contains("System Settings") ?? false)
+        XCTAssertFalse(pending?.detail.contains("System Settings") ?? true)
     }
 
     func testChecksEquatableByID() {

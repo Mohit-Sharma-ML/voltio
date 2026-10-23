@@ -19,6 +19,17 @@ public enum PeripheralKind: String, Sendable, Equatable, Codable {
     case mac
     case other
 
+    /// True for devices whose battery is reported per compartment (left/right
+    /// pod, case). Used to label a lone reading — with one pod in the case only
+    /// the worn pod advertises, and a bare percentage would read as the whole
+    /// device's charge.
+    public var hasCompartments: Bool {
+        switch self {
+        case .airpods, .airpodsPro, .airpodsMax: return true
+        default: return false
+        }
+    }
+
     /// Best-effort classification of a connected device by its advertised name,
     /// used for GATT devices (iPhone/iPad/Watch/Mac) where we only have the name.
     public static func classify(deviceName name: String) -> PeripheralKind {

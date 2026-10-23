@@ -146,14 +146,12 @@ public enum ContinuityDecoder {
             guard candidate <= 100 else { return nil }
             let band = Int(flip ? highNibble : lowNibble)
             guard band <= 10 else { return nil }
-            // Accept candidates in the nibble's tens band or the band above it:
-            // the advert's nibble and its precise byte are sampled at slightly
-            // different moments, so a draining ear can cross a boundary (nibble
-            // 5 while the byte already reads 60). Anything further away belongs
-            // to a different field entirely — the classic 100% payload keeps a
-            // nibble of 10 (100%) beside an unrelated byte 10 of 50, which is
-            // five bands away and therefore rejected.
-            guard candidate / 10 == band || candidate / 10 == band + 1 else { return nil }
+            // Require exact agreement with the nibble's tens digit. Every one of
+            // 183 captured adverts satisfied this (0xF5 → 57/58/59, 0xF6 → 60),
+            // so the nibble and the precise byte advance together. Anything that
+            // disagrees belongs to a different field — notably the classic 100%
+            // payload, whose nibble is 10 while byte 10 holds an unrelated 50.
+            guard candidate / 10 == band else { return nil }
             return candidate
         }()
 

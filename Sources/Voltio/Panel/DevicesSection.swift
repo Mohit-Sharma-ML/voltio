@@ -41,9 +41,24 @@ extension MenuPanelView {
                     }
                     Spacer()
                     if let percent = device.minPercent {
-                        Text("\(percent)%")
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        // With one pod in the case, only the worn pod reports —
+                        // the headline number would otherwise look like the whole
+                        // device's charge. Name the compartment when the device
+                        // has several but only one is reporting.
+                        let soleCompartment = device.batteries.count == 1
+                            && device.kind.hasCompartments
+                            ? device.batteries[0].label
+                            : nil
+                        HStack(spacing: 3) {
+                            if let soleCompartment {
+                                Text(compartmentLabel(soleCompartment))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("\(percent)%")
+                                .font(.callout.weight(.bold))
+                                .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        }
                     }
                 }
                 if device.isConnected {

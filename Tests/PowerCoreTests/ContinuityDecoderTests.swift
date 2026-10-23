@@ -141,16 +141,24 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertNil(battery.caseBattery)    // 0xF sentinel
     }
 
-    /// Consecutive real adverts as the left ear drained 57 → 60.
+    /// Consecutive real adverts as the left ear drained. Values and the pods
+    /// byte are transcribed from the 2026-10-23 capture: 0xF5 accompanied
+    /// 57/58/59 and 0xF6 accompanied 60 — in all 183 adverts the nibble's tens
+    /// digit matched the precise byte, which is what the decoder's guard relies
+    /// on.
     func testAirPods4PreciseLeftTracksDrain() throws {
-        for (byte10, expected) in [(0x39, 57), (0x3A, 58), (0x3B, 59), (0x3C, 60)] {
+        for (pods, byte10, expected) in [
+            (0xF5, 0x39, 57), (0xF5, 0x3A, 58), (0xF5, 0x3B, 59), (0xF6, 0x3C, 60),
+        ] {
             let data = Data([
                 UInt8(0x4C), 0x00, 0x07, 0x19,
-                0x01, 0x1B, 0x20, 0x22, 0xF5, 0x8F, 0x12, 0x00, 0x09, 0x09, UInt8(byte10),
+                0x01, 0x1B, 0x20, 0x22, UInt8(pods), 0x8F, 0x12, 0x00, 0x09, 0x09, UInt8(byte10),
             ] + Array(repeating: 0, count: 14))
             let battery = try XCTUnwrap(
                 ContinuityDecoder.decodeProximityPairing(manufacturerData: data))
-            XCTAssertEqual(battery.left, expected, "byte10=0x\(String(byte10, radix: 16))")
+            XCTAssertEqual(
+                battery.left, expected,
+                "pods=0x\(String(pods, radix: 16)) byte10=\(byte10)")
         }
     }
 

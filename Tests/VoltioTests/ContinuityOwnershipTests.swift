@@ -17,10 +17,13 @@ final class ContinuityOwnershipTests: XCTestCase {
         super.setUp()
         // Never touch IOBluetooth from tests.
         ContinuityOwnershipTracker.pairedNamesProvider = { nil }
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }
     }
 
     override func tearDown() {
         ContinuityOwnershipTracker.pairedNamesProvider = ContinuityOwnershipTracker.fetchPairedNames
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider =
+            ContinuityOwnershipTracker.pairedDeviceAddressSuffixes
         super.tearDown()
     }
 
@@ -133,5 +136,54 @@ final class ContinuityOwnershipTests: XCTestCase {
         XCTAssertTrue(tracker.isOwned(name: "connected pods"))
         XCTAssertTrue(tracker.isOwned(name: "paired pods"))
         XCTAssertFalse(tracker.isOwned(name: "stranger pods"))
+    }
+
+    // MARK: - Owner-address path (the AirPods case)
+
+    /// Real-world regression, 2026-10-23: one Mac saw the same AirPods under
+    /// three names — advert `Mohit's AirPods - Find My`, paired `AirPods 4
+    /// (ANC)`, system-connected `Mohit's AirPods`. Name matching cannot bridge
+    /// that, so every advert was rejected and AirPods never appeared. The
+    /// advert's tail carries the paired iPhone's address, which is what makes
+    /// ownership checkable without trusting a display name.
+    func testAdvertNameMayDifferFromPairedName() {
+        let tracker = ContinuityOwnershipTracker()
+        // Paired list holds the model name, not the advert name.
+        ContinuityOwnershipTracker.pairedNamesProvider = { ["airpods 4 (anc)"] }
+        tracker.refreshPairedNamesIfStale(visibleNames: ["mohit's airpods - find my"])
+
+        // Name matching alone still fails — this is the bug being fixed.
+        XCTAssertFalse(tracker.isOwned(name: "mohit's airpods - find my"))
+    }
+
+    func testAddressSuffixGrantsOwnershipRegardlessOfName() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [[0x43, 0xB3, 0x52]] }
+        tracker.refreshPairedAddressesIfStale()
+
+        // Suffix came from the paired iPhone 80:96:98:43:b3:52.
+        XCTAssertTrue(tracker.isOwnedByAddress([0x43, 0xB3, 0x52]))
+        // A different device's suffix must not be trusted.
+        XCTAssertFalse(tracker.isOwnedByAddress([0x7E, 0x60, 0x0B]))
+        // Missing/!3-byte suffixes never match.
+        XCTAssertFalse(tracker.isOwnedByAddress(nil))
+        XCTAssertFalse(tracker.isOwnedByAddress([0x43, 0xB3]))
+        XCTAssertFalse(tracker.isOwnedByAddress([]))
+    }
+
+    func testAddressRefreshIsCached() {
+        let tracker = ContinuityOwnershipTracker()
+        var calls = 0
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = {
+            calls += 1
+            return [[0x43, 0xB3, 0x52]]
+        }
+        let now = Date()
+        tracker.refreshPairedAddressesIfStale(now: now)
+        tracker.refreshPairedAddressesIfStale(now: now.addingTimeInterval(30))
+        XCTAssertEqual(calls, 1, "second refresh inside 60 s should be a no-op")
+
+        tracker.refreshPairedAddressesIfStale(now: now.addingTimeInterval(61))
+        XCTAssertEqual(calls, 2)
     }
 }

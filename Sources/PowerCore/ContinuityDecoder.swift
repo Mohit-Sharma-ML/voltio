@@ -77,6 +77,37 @@ public enum ContinuityDecoder {
         return nil
     }
 
+    /// Owner address suffix carried in the advert tail (last 3 bytes), when
+    /// present. Apple's proximity-pairing advert for an owned device embeds the
+    /// paired phone's Bluetooth address here; it is constant per owner and is
+    /// what makes ownership checking possible without trusting display names.
+    ///
+    /// Observed on AirPods 4 (0x1B20): payload bytes 13–15 were `43 b3 52`,
+    /// matching the last three bytes of the paired iPhone's address. Returns
+    /// `nil` for payloads too short to carry it (classic 17-byte layouts).
+    public static func ownerAddressSuffix(manufacturerData data: Data) -> [UInt8]? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 4,
+              bytes[0] == appleCompanyID.0, bytes[1] == appleCompanyID.1
+        else { return nil }
+
+        var index = 2
+        while index + 1 < bytes.count {
+            let type = bytes[index]
+            let length = Int(bytes[index + 1])
+            let payloadStart = index + 2
+            let payloadEnd = payloadStart + length
+            guard payloadEnd <= bytes.count else { return nil }
+            if type == proximityPairingType {
+                let payload = Array(bytes[payloadStart..<payloadEnd])
+                guard payload.count >= 16 else { return nil }
+                return Array(payload[13...15])
+            }
+            index = payloadEnd
+        }
+        return nil
+    }
+
     /// Decode the proximity-pairing payload (excludes type + length bytes).
     /// Layout: [0]=prefix [1..2]=model [3]=status [4]=pods battery
     /// [5]=case battery (low nibble) + charging flags (high nibble).
@@ -92,6 +123,40 @@ public enum ContinuityDecoder {
         let flip = (status & 0x20) == 0
         let highNibble = podsByte >> 4
         let lowNibble = podsByte & 0x0F
+
+        // Some models broadcast a precise percentage in a later byte; the
+        // nibble then only carries the tens digit. Byte 10 was confirmed as the
+        // exact whole-percent value for the LEFT ear on AirPods 4 (model
+        // 0x1B20) from 183 adverts correlated against macOS's own reading:
+        // byte[10] tracked the system value while the nibble supplied only the
+        // tens band (0xF5 → 57/58/59, 0xF6 → 60).
+        //
+        // Two deliberate restrictions:
+        //  - Only the left ear. In every captured advert the right ear reported
+        //    the 0xF "unavailable" sentinel, so no right-ear byte has evidence
+        //    behind it. Guessing one would be worse than omitting it.
+        //  - Guarded so it can only refine a value it already agrees with: adopt
+        //    the byte only when its tens digit matches the nibble's. Payloads
+        //    that keep the classic layout — including the 100% fixture, whose
+        //    nibble is 10 while byte 10 holds an unrelated 50 — fail this check
+        //    and keep the nibble-derived value.
+        let preciseLeft: Int? = {
+            guard payload.count > 10 else { return nil }
+            let candidate = Int(payload[10])
+            guard candidate <= 100 else { return nil }
+            let band = Int(flip ? highNibble : lowNibble)
+            guard band <= 10 else { return nil }
+            // Accept candidates in the nibble's tens band or the band above it:
+            // the advert's nibble and its precise byte are sampled at slightly
+            // different moments, so a draining ear can cross a boundary (nibble
+            // 5 while the byte already reads 60). Anything further away belongs
+            // to a different field entirely — the classic 100% payload keeps a
+            // nibble of 10 (100%) beside an unrelated byte 10 of 50, which is
+            // five bands away and therefore rejected.
+            guard candidate / 10 == band || candidate / 10 == band + 1 else { return nil }
+            return candidate
+        }()
+
         let leftRaw = flip ? highNibble : lowNibble
         let rightRaw = flip ? lowNibble : highNibble
         let caseRaw = caseByte & 0x0F
@@ -99,7 +164,9 @@ public enum ContinuityDecoder {
 
         return AirPodsBattery(
             model: model,
-            left: percent(leftRaw),
+            // The precise left byte refines the nibble's tens band when the
+            // guard accepted it; the right ear keeps the nibble value only.
+            left: preciseLeft ?? percent(leftRaw),
             right: percent(rightRaw),
             caseBattery: percent(caseRaw),
             leftCharging: chargeFlags & 0b0001 != 0,

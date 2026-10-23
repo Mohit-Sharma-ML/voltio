@@ -9,7 +9,13 @@ private let btLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Voltio", 
 /// Coarse Bluetooth availability used to drive the Connected Devices UI.
 enum BluetoothAccess: Equatable {
     case scanning
-    case needsPermission
+    /// The user has answered the system prompt with "Don't Allow" (or policy
+    /// restricts it). The prompt will not appear again — the only remedy is the
+    /// Bluetooth privacy pane in System Settings, so callers can offer a link.
+    case denied
+    /// The prompt has not been shown yet. Nothing is broken and no remedy is
+    /// needed; the system asks the first time a scan starts.
+    case awaitingPermission
     case poweredOff
     case unavailable
 }
@@ -45,6 +51,10 @@ final class BluetoothBatteryScanner: NSObject {
     private var central: CBCentralManager?
     /// AirPods/Beats decoded from Continuity advertisements (no connection).
     private var devices: [UUID: PeripheralDevice] = [:]
+    /// Owner-address suffix advertised by each Continuity device, used by the
+    /// ownership gate. Kept separate from `PeripheralDevice` because it is
+    /// transport metadata, not something the UI displays.
+    private var ownerSuffixes: [UUID: [UInt8]] = [:]
     private let staleAfter: TimeInterval = 60
 
     /// Devices read over a GATT connection (iPhone, iPad, Watch…), keyed by id.
@@ -77,9 +87,9 @@ final class BluetoothBatteryScanner: NSObject {
     var access: BluetoothAccess {
         switch CBCentralManager.authorization {
         case .denied, .restricted:
-            return .needsPermission
+            return .denied
         case .notDetermined:
-            return .needsPermission
+            return .awaitingPermission
         case .allowedAlways:
             break
         @unknown default:
@@ -175,6 +185,9 @@ final class BluetoothBatteryScanner: NSObject {
         let cutoff = Date().addingTimeInterval(-staleAfter)
         let before = devices.count
         devices = devices.filter { $0.value.lastSeen >= cutoff }
+        // Drop owner suffixes for devices no longer tracked, so the map cannot
+        // grow without bound as peripherals rotate privacy addresses.
+        ownerSuffixes = ownerSuffixes.filter { devices[$0.key] != nil }
         if devices.count != before { emit() }
     }
 
@@ -182,13 +195,23 @@ final class BluetoothBatteryScanner: NSObject {
         let merged = Array(devices.values) + Array(gattDevices.values)
         // Ownership gate: Continuity adverts (the `ble:` path) fire for ANY
         // Apple device in radio range — yours, a colleague's, a stranger's
-        // (RSSI ≥ -65 is proximity, not ownership). Only devices the SYSTEM
-        // has connected to this Mac at least once are trusted; everything
-        // else stays invisible. GATT devices are inherently paired-only
-        // (retrieveConnectedPeripherals), so they pass untouched.
+        // (RSSI ≥ -65 is proximity, not ownership). Two signals are accepted:
+        //
+        //  1. Owner-address match — the advert's tail carries the paired
+        //     phone's Bluetooth address. This is the only signal that works for
+        //     AirPods, whose advert name differs from their paired name, and it
+        //     is a hardware identity rather than a display string.
+        //  2. Name match against the paired list, retained for devices whose
+        //     advert name does match (existing behaviour).
+        //
+        // GATT devices are inherently paired-only (retrieveConnectedPeripherals),
+        // so they pass untouched.
+        ownership.refreshPairedAddressesIfStale()
         let owned = merged.filter { device in
-            device.id.hasPrefix("ble:")
-                ? ownership.isOwned(name: device.name) : true
+            guard device.id.hasPrefix("ble:") else { return true }
+            if ownership.isOwned(name: device.name) { return true }
+            let uuid = UUID(uuidString: String(device.id.dropFirst("ble:".count)))
+            return ownership.isOwnedByAddress(uuid.flatMap { ownerSuffixes[$0] })
         }
         // Collapse indistinguishable rows (same kind, name and battery readings)
         // — e.g. the same AirPods re-observed under a rotated privacy address.
@@ -356,6 +379,7 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
         // Extract Sendable values before hopping to the main actor.
         let uuid = peripheral.identifier
         let advertisedName = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+        let ownerSuffix = ContinuityDecoder.ownerAddressSuffix(manufacturerData: manufacturerData)
 
         MainActorIsolation.assume {
             guard let device = Self.makeDevice(uuid: uuid, advertisedName: advertisedName, pods: pods) else {
@@ -363,6 +387,7 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
                 return
             }
             self.diagnostics.advertsDecoded += 1
+            if let ownerSuffix { self.ownerSuffixes[uuid] = ownerSuffix }
             // Refresh recency on every sighting, but only republish when the
             // reading actually changed — avoids a recompute per advertisement.
             if let existing = self.devices[uuid], Self.sameContent(existing, device) {

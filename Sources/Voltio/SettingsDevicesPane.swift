@@ -36,7 +36,17 @@ struct DevicesSettingsView: View {
                     SettingsRow(
                         icon: "dot.radiowaves.left.and.right", tint: .gray,
                         title: bluetoothTitle, subtitle: bluetoothSubtitle
-                    ) { EmptyView() }
+                    ) {
+                        if model.bluetoothAccess == .denied {
+                            // macOS never re-prompts after a denial, so without
+                            // this button the row told the user to "allow
+                            // Bluetooth" with no way to do it.
+                            Button("Open Settings") {
+                                openBluetoothPrivacySettings()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
                 } else {
                     ForEach(Array(model.peripherals.enumerated()), id: \.element.id) { index, device in
                         DeviceSettingsRow(settings: settings, model: model, device: device)
@@ -217,7 +227,8 @@ struct DevicesSettingsView: View {
 
     private var bluetoothTitle: String {
         switch model.bluetoothAccess {
-        case .needsPermission: return "Bluetooth access needed"
+        case .denied: return "Bluetooth access denied"
+        case .awaitingPermission: return "Bluetooth permission pending"
         case .poweredOff: return "Bluetooth is off"
         case .scanning, .unavailable: return "No accessories nearby"
         }
@@ -225,10 +236,21 @@ struct DevicesSettingsView: View {
 
     private var bluetoothSubtitle: String {
         switch model.bluetoothAccess {
-        case .needsPermission: return "Allow Bluetooth to see AirPods and accessory battery."
+        case .denied:
+            return "macOS won't ask again. Enable Voltio under System Settings → Privacy & Security → Bluetooth."
+        case .awaitingPermission:
+            return "macOS will ask for Bluetooth access; AirPods and accessory battery need it."
         case .poweredOff: return "Turn on Bluetooth to detect accessories."
         case .scanning, .unavailable: return "No accessories with a battery detected nearby."
         }
+    }
+
+    /// Deep link to the Bluetooth privacy pane. Only meaningful when access was
+    /// denied — macOS does not re-prompt, so this is the single recovery path.
+    private func openBluetoothPrivacySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")
+        else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 

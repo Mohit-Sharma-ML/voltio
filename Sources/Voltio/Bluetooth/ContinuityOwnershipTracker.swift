@@ -34,6 +34,13 @@ final class ContinuityOwnershipTracker {
     /// touching the framework.
     nonisolated(unsafe) static var pairedNamesProvider: () -> Set<String>? = fetchPairedNames
 
+    /// Connected-audio address source, injectable for tests.
+    nonisolated(unsafe) static var pairedAddressSuffixProvider: () -> Set<[UInt8]> = pairedDeviceAddressSuffixes
+
+    /// Cached connected-audio address suffixes (refreshed at most once a minute).
+    private var pairedAddressSuffixes: Set<[UInt8]>?
+    private var audioAddressesFetchedAt: Date?
+
     /// Case/space-insensitive name normalization for matching an advert's
     /// local name against the system's paired/connected names.
     nonisolated static func normalizedName(_ name: String?) -> String? {
@@ -48,6 +55,30 @@ final class ContinuityOwnershipTracker {
         let name = rawName.lowercased()
         if confirmedOwnedNames.contains(name) { return true }
         return pairedNames?.contains(name) ?? false
+    }
+
+    /// True when the advert's owner-address suffix matches a connected audio
+    /// device on this Mac.
+    ///
+    /// This is the primary ownership signal for devices whose advert name
+    /// differs from their paired name — the common case for AirPods, where the
+    /// advert reports `<owner>'s AirPods - Find My` while the paired list holds
+    /// the model name (`AirPods 4 (ANC)`). Name matching cannot bridge that, so
+    /// before this check every AirPods advert was discarded.
+    func isOwnedByAddress(_ suffix: [UInt8]?) -> Bool {
+        guard let suffix, suffix.count == 3 else { return false }
+        if let cached = pairedAddressSuffixes,
+           cached.contains(suffix) { return true }
+        return false
+    }
+
+    /// Refresh the paired-address cache (at most once per 60 s; the paired list
+    /// changes rarely and the query crosses into IOBluetooth).
+    func refreshPairedAddressesIfStale(now: Date = Date()) {
+        if let fetched = audioAddressesFetchedAt,
+           now.timeIntervalSince(fetched) < 60 { return }
+        pairedAddressSuffixes = Self.pairedAddressSuffixProvider()
+        audioAddressesFetchedAt = now
     }
 
     /// Confirm visible devices whose name is in `systemConnectedNames` (the
@@ -102,6 +133,39 @@ final class ContinuityOwnershipTracker {
             return nil
         }
         return Set(paired.compactMap { normalizedName($0.name as String?) })
+    }
+
+    /// Last three bytes of every *paired* device's Bluetooth address.
+    ///
+    /// Apple's proximity-pairing advert for an owned device carries the paired
+    /// phone's address in its tail, and in practice the visible device name in
+    /// the advert differs from the paired-list name — observed on one Mac:
+    /// advert `Mohit's AirPods - Find My`, paired `AirPods 4 (ANC)`, same
+    /// hardware. Matching by name therefore never succeeded, which kept every
+    /// AirPods advert out of the list.
+    ///
+    /// Verified against a live capture: the advert's tail was `43 b3 52`, the
+    /// last three bytes of the paired iPhone `80:96:98:43:b3:52`. Note that the
+    /// phone reports `isConnected == false` over IOBluetooth even while it is
+    /// providing the identity — so the *paired* list, not the connected set, is
+    /// the right source.
+    ///
+    /// Matching every paired device is safe: a stranger's AirPods advertise
+    /// *their* owner's phone address, which is not in this Mac's paired list.
+    nonisolated static func pairedDeviceAddressSuffixes() -> Set<[UInt8]> {
+        guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else {
+            return []
+        }
+        var result: Set<[UInt8]> = []
+        for device in paired {
+            guard let address = device.addressString else { continue }
+            let bytes = address
+                .split(separator: "-")
+                .compactMap { UInt8($0, radix: 16) }
+            guard bytes.count == 6 else { continue }
+            result.insert(Array(bytes.suffix(3)))
+        }
+        return result
     }
 
     private var lastSystemConnectedNames: Set<String> = []

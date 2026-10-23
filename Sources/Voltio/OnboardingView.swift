@@ -22,6 +22,11 @@ struct OnboardingView: View {
                     detail: "Low and charged alerts appear as an on-screen bubble with optional glow and sound. Enable system notifications in Settings → Alerts to catch them even in full-screen apps."
                 )
                 step(
+                    icon: "airpods",
+                    title: "Accessory battery needs Bluetooth",
+                    detail: "Voltio asks for Bluetooth access to read AirPods and accessory battery levels. Nothing leaves your Mac — the permission is used only for that local reading. Magic mice and keyboards are read without it."
+                )
+                step(
                     icon: "slider.horizontal.3",
                     title: "Tune everything",
                     detail: "Icon style, refresh rate, bubble size, per-device alerts — all in Settings. Open it from the menu-bar panel's gear button."
@@ -43,7 +48,10 @@ struct OnboardingView: View {
             }
             .padding([.horizontal, .bottom], 24)
         }
-        .frame(width: 420, height: 480)
+        .frame(width: 420)
+        // No fixed height: the window uses .windowResizability(.contentSize), so
+        // it grows to fit however many steps there are. A hardcoded height
+        // silently clips when a step is added.
     }
 
     private var hero: some View {

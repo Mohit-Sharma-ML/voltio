@@ -114,7 +114,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertNil(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data))
     }
 
-    // MARK: - Precise left-ear refinement (AirPods 4, model 0x1B20)
+    // MARK: - Precise levels (AirPods 4, model 0x1B20)
 
     /// Real adverts from AirPods 4 (ANC), macOS reading 57–59% left; the nibble alone yields only 50%.
     func testAirPods4UsesPreciseLeftByte() throws {
@@ -130,6 +130,55 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.left, 59)     // was 50 from the nibble alone
         XCTAssertNil(battery.right)          // 0xF sentinel — genuinely absent
         XCTAssertNil(battery.caseBattery)    // 0xF sentinel
+    }
+
+    /// Live capture 2026-10-28 with both pods connected and charging, macOS reporting
+    /// Left 100%, Right 100%, Case 35%. Bytes 10-12 are the precise levels with bit 7
+    /// set on the two charging pods; the case nibble alone reads 30%.
+    func testLiveChargingCaptureDecodesAllCompartments() throws {
+        let payload: [UInt8] = [
+            0x01, 0x1B, 0x20, 0x55, 0xAA, 0xB3, 0x31, 0x00, 0x08, 0x48,
+            0xE4, 0xE4, 0x23, 0x43, 0xB3, 0x52, 0x5E, 0x30, 0x44, 0x26,
+            0x13, 0xC1, 0xE6, 0x12, 0x86,
+        ]
+        let battery = try XCTUnwrap(ContinuityDecoder.decodeProximityPairing(
+            manufacturerData: Data([0x4C, 0x00, 0x07, 0x19] + payload)))
+
+        XCTAssertEqual(battery.left, 100)
+        XCTAssertEqual(battery.right, 100)
+        XCTAssertEqual(battery.caseBattery, 35)   // was 30 from the nibble
+        XCTAssertTrue(battery.leftCharging)
+        XCTAssertTrue(battery.rightCharging)
+        XCTAssertFalse(battery.caseCharging)
+    }
+
+    /// Bit 7 marks a charging compartment; a charging pod at 87% must not be rejected
+    /// as out-of-range and fall back to the 80% tens band.
+    func testChargingBitDoesNotHideThePreciseValue() throws {
+        // pods 0x88 → left band 8; byte10 = 0x80 | 87
+        var payload: [UInt8] = [0x01, 0x1B, 0x20, 0x22, 0x88, 0x00]
+        payload += Array(repeating: 0, count: 4)
+        payload += [0x80 | 87, 0, 0]
+        payload += Array(repeating: 0, count: 25 - payload.count)
+        let battery = try XCTUnwrap(ContinuityDecoder.decodeProximityPairing(
+            manufacturerData: Data([0x4C, 0x00, 0x07, UInt8(payload.count)] + payload)))
+
+        XCTAssertEqual(battery.left, 87)
+    }
+
+    /// The right ear has a precise byte too (byte 11) — the earlier single-pod capture
+    /// only ever reported the 0xF sentinel there.
+    func testRightEarUsesItsPreciseByte() throws {
+        // pods 0x55 → left band 5, right band 5; byte11 = 0x80 | 57
+        var payload: [UInt8] = [0x01, 0x1B, 0x20, 0x22, 0x55, 0x00]
+        payload += Array(repeating: 0, count: 4)
+        payload += [50, 0x80 | 57, 0]
+        payload += Array(repeating: 0, count: 25 - payload.count)
+        let battery = try XCTUnwrap(ContinuityDecoder.decodeProximityPairing(
+            manufacturerData: Data([0x4C, 0x00, 0x07, UInt8(payload.count)] + payload)))
+
+        XCTAssertEqual(battery.left, 50)
+        XCTAssertEqual(battery.right, 57)          // not the 50% nibble value
     }
 
     /// Consecutive real adverts as the left ear drained: 0xF5 → 57/58/59, 0xF6 → 60.
@@ -164,8 +213,8 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.caseBattery, 70)
     }
 
-    /// A genuinely present right ear still decodes from its nibble; the refinement is left-only.
-    func testPreciseLeftDoesNotAffectPresentRightEar() throws {
+    /// A compartment with no precise byte keeps its nibble value.
+    func testCompartmentsWithoutPreciseEvidenceKeepNibbles() throws {
         // status 0x22 → flip false → left=low nibble (5), right=high nibble (8)
         var payload: [UInt8] = [0x01, 0x1B, 0x20, 0x22, 0x85, 0x00]
         payload += Array(repeating: 0, count: 4)
@@ -176,7 +225,7 @@ final class ContinuityDecoderTests: XCTestCase {
         let battery = try XCTUnwrap(
             ContinuityDecoder.decodeProximityPairing(manufacturerData: data))
         XCTAssertEqual(battery.left, 57)           // refined
-        XCTAssertEqual(battery.right, 80)          // untouched nibble value
+        XCTAssertEqual(battery.right, 80)          // byte 11 empty → nibble value
     }
 
     /// Calibrated on 0x1B20 only, so another model's byte 10 must never be read as a percentage.
@@ -197,6 +246,6 @@ final class ContinuityDecoderTests: XCTestCase {
 
     /// Stated once in code, so widening the calibration is a deliberate edit.
     func testCalibratedModelMatchesAirPods4() {
-        XCTAssertEqual(ContinuityDecoder.preciseLeftEarModel, 0x1B20)
+        XCTAssertEqual(ContinuityDecoder.preciseLevelModel, 0x1B20)
     }
 }

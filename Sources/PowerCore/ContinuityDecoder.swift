@@ -42,8 +42,8 @@ public enum ContinuityDecoder {
     /// TLV type for the Proximity Pairing (AirPods) message.
     private static let proximityPairingType: UInt8 = 0x07
 
-    /// AirPods 4 (ANC) — the only model with a calibrated precise left-ear byte.
-    static let preciseLeftEarModel: UInt16 = 0x1B20
+    /// AirPods 4 (ANC) — the only model with calibrated precise level bytes.
+    static let preciseLevelModel: UInt16 = 0x1B20
 
     /// Parse manufacturer data (including the 2-byte company id, as CoreBluetooth provides it).
     public static func decodeProximityPairing(manufacturerData data: Data) -> AirPodsBattery? {
@@ -121,22 +121,27 @@ public enum ContinuityDecoder {
         let caseRaw = caseByte & 0x0F
         let chargeFlags = caseByte >> 4
 
-        // 0x1B20 puts the precise left-ear % in byte 10; its nibble carries only the tens digit.
-        let preciseLeft: Int? = {
-            guard model == preciseLeftEarModel, payload.count > 10 else { return nil }
-            let candidate = Int(payload[10])
-            guard candidate <= 100 else { return nil }
-            let band = Int(leftRaw)
-            guard band <= 10 else { return nil }
-            guard candidate / 10 == band else { return nil }  // only refine a value it agrees with
-            return candidate
+        // 0x1B20 broadcasts precise levels for all three compartments at bytes 10-12 with bit 7 as a charging flag.
+        let precise: (left: Int?, right: Int?, caseBattery: Int?) = {
+            guard model == preciseLevelModel, payload.count > 12 else { return (nil, nil, nil) }
+            func level(_ raw: UInt8, band: UInt8) -> Int? {
+                guard band <= 10 else { return nil }
+                let value = Int(raw & 0x7F)  // bit 7 is a charging flag, not part of the level
+                guard value <= 100, value / 10 == Int(band) else { return nil }  // only refine a value it agrees with
+                return value
+            }
+            return (
+                level(payload[10], band: leftRaw),
+                level(payload[11], band: rightRaw),
+                level(payload[12], band: caseRaw)
+            )
         }()
 
         return AirPodsBattery(
             model: model,
-            left: preciseLeft ?? percent(leftRaw),
-            right: percent(rightRaw),
-            caseBattery: percent(caseRaw),
+            left: precise.left ?? percent(leftRaw),
+            right: precise.right ?? percent(rightRaw),
+            caseBattery: precise.caseBattery ?? percent(caseRaw),
             leftCharging: chargeFlags & 0b0001 != 0,
             rightCharging: chargeFlags & 0b0010 != 0,
             caseCharging: chargeFlags & 0b0100 != 0

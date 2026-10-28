@@ -65,6 +65,13 @@ final class ContinuityOwnershipTracker {
         return false
     }
 
+    /// The gate itself: may this merged device be shown? Non-`ble:` ids are inherently paired, so they pass.
+    /// Extracted from the scanner's filter so the bug site is testable without CoreBluetooth.
+    func isVisible(deviceID: String, name: String, suffix: [UInt8]?) -> Bool {
+        guard deviceID.hasPrefix("ble:") else { return true }
+        return isOwned(name: name) || isOwnedByAddress(suffix)
+    }
+
     /// Paired-address suffixes the gate can match: zero + non-zero `hiddenByOwnership` means AirPods are being hidden.
     var knownAddressSuffixCount: Int {
         pairedAddressSuffixes?.count ?? 0

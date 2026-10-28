@@ -86,6 +86,9 @@ final class BatteryModel {
     /// Coarse Bluetooth state for the Connected Devices section.
     var bluetoothAccess: BluetoothAccess { bluetooth.access }
 
+    /// True once the Bluetooth radio has been brought up (i.e. the TCC prompt may have fired).
+    var isBluetoothActivated: Bool { bluetooth.isActivated }
+
     /// BLE scan diagnostics (Settings → Devices, Developer Mode only).
     var bleDiagnostics: BLEDiagnostics { bluetooth.diagnostics }
 
@@ -203,6 +206,20 @@ final class BatteryModel {
             alerts.evaluate(reading)
         }
         hidDevices = hidReader.read()
+        // Bluetooth stays dormant until onboarding has explained the permission: creating the
+        // central manager is what raises the system prompt.
+        if settings.hasCompletedOnboarding {
+            bluetooth.activate()
+            bluetooth.startIfPossible()
+            bluetooth.refreshConnectedDevices()
+        }
+        recomputePeripherals()
+    }
+
+    /// Called when onboarding finishes (or is skipped), so the Bluetooth prompt arrives after the
+    /// step that explains it rather than during app launch.
+    func activateBluetoothIfNeeded() {
+        bluetooth.activate()
         bluetooth.startIfPossible()
         bluetooth.refreshConnectedDevices()
         recomputePeripherals()

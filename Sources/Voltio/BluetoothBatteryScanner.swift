@@ -76,12 +76,23 @@ final class BluetoothBatteryScanner: NSObject {
 
     override init() {
         super.init()
+        // No CBCentralManager yet: creating one triggers the Bluetooth TCC prompt, and that must
+        // come after onboarding explains it, not during app launch.
+    }
+
+    /// Create the central manager, which is what raises the system permission prompt. Idempotent.
+    func activate() {
+        guard central == nil else { return }
         central = CBCentralManager(
             delegate: self,
             queue: .main,
             options: [CBCentralManagerOptionShowPowerAlertKey: false]
         )
     }
+
+    /// Whether the radio has been brought up. Before `activate()`, no `CBCentralManager` exists and
+    /// macOS has not been asked for Bluetooth permission.
+    var isActivated: Bool { central != nil }
 
     var access: BluetoothAccess {
         switch CBCentralManager.authorization {
@@ -191,15 +202,16 @@ final class BluetoothBatteryScanner: NSObject {
 
     private func emit() {
         let merged = Array(devices.values) + Array(gattDevices.values)
-        // Ownership gate: `ble:` adverts fire for any Apple device in range; address match first, then name.
         ownership.refreshPairedAddressesIfStale()
         // Keyed by name: one physical device under rotated privacy addresses is still one hidden device.
         var hiddenNames = Set<String>()
         let owned = merged.filter { device in
-            guard device.id.hasPrefix("ble:") else { return true }
-            if ownership.isOwned(name: device.name) { return true }
             let uuid = UUID(uuidString: String(device.id.dropFirst("ble:".count)))
-            let visible = ownership.isOwnedByAddress(uuid.flatMap { ownerSuffixes[$0] })
+            let visible = ownership.isVisible(
+                deviceID: device.id,
+                name: device.name,
+                suffix: uuid.flatMap { ownerSuffixes[$0] }
+            )
             if !visible { hiddenNames.insert(device.name) }
             return visible
         }

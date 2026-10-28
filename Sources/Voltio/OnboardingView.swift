@@ -6,6 +6,7 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var settings: AppSettings
+    let model: BatteryModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +41,7 @@ struct OnboardingView: View {
                 Spacer()
                 Button("Get Started") {
                     settings.hasCompletedOnboarding = true
+                    model.activateBluetoothIfNeeded()
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -50,6 +52,10 @@ struct OnboardingView: View {
         }
         .frame(width: 420)
         // No fixed height: .windowResizability(.contentSize) grows to fit, so a new step can't clip.
+        // Activation must not depend on the button: closing the window also ends onboarding, and
+        // without this the radio would stay dormant forever. The completion flag stays the button's
+        // job, so a mid-onboarding quit still shows the intro next launch.
+        .onDisappear { model.activateBluetoothIfNeeded() }
     }
 
     private var hero: some View {

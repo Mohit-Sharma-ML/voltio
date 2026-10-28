@@ -194,4 +194,31 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.left, 57)           // refined
         XCTAssertEqual(battery.right, 80)          // untouched nibble value
     }
+
+    /// The precise byte was calibrated on 0x1B20 only, so it must never fire on
+    /// another model — even one whose byte 10 happens to satisfy the tens-digit
+    /// guard. Unknown models have no evidence for byte 10; treating it as a
+    /// percentage would silently rewrite a level on a guess.
+    func testPreciseByteIsScopedToItsCalibratedModel() throws {
+        // Same payload as the AirPods 4 case but model 0x0E20 (AirPods Pro),
+        // whose byte 10 is unrelated data. Without the model gate this would
+        // decode as 57%.
+        var payload: [UInt8] = [0x01, 0x0E, 0x20, 0x22, 0x85, 0x00]
+        payload += Array(repeating: 0, count: 4)
+        payload.append(57)
+        payload += Array(repeating: 0, count: 14)
+        let data = Data([UInt8(0x4C), 0x00, 0x07, UInt8(payload.count)] + payload)
+
+        let battery = try XCTUnwrap(
+            ContinuityDecoder.decodeProximityPairing(manufacturerData: data))
+        XCTAssertEqual(battery.model, 0x0E20)
+        XCTAssertEqual(battery.left, 50)           // classic nibble, not 57
+        XCTAssertEqual(battery.right, 80)
+    }
+
+    /// The calibrated model is stated once, in code, so a future calibration
+    /// (or a second model) is a deliberate edit rather than a silent widening.
+    func testCalibratedModelMatchesAirPods4() {
+        XCTAssertEqual(ContinuityDecoder.preciseLeftEarModel, 0x1B20)
+    }
 }

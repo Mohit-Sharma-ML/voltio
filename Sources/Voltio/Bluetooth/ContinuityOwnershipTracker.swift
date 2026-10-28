@@ -34,12 +34,12 @@ final class ContinuityOwnershipTracker {
     /// touching the framework.
     nonisolated(unsafe) static var pairedNamesProvider: () -> Set<String>? = fetchPairedNames
 
-    /// Connected-audio address source, injectable for tests.
+    /// Paired-device address-suffix source, injectable for tests.
     nonisolated(unsafe) static var pairedAddressSuffixProvider: () -> Set<[UInt8]> = pairedDeviceAddressSuffixes
 
-    /// Cached connected-audio address suffixes (refreshed at most once a minute).
+    /// Cached paired-device address suffixes (refreshed at most once a minute).
     private var pairedAddressSuffixes: Set<[UInt8]>?
-    private var audioAddressesFetchedAt: Date?
+    private var pairedAddressesFetchedAt: Date?
 
     /// Case/space-insensitive name normalization for matching an advert's
     /// local name against the system's paired/connected names.
@@ -57,8 +57,8 @@ final class ContinuityOwnershipTracker {
         return pairedNames?.contains(name) ?? false
     }
 
-    /// True when the advert's owner-address suffix matches a connected audio
-    /// device on this Mac.
+    /// True when the advert's owner-address suffix matches a *paired* device on
+    /// this Mac.
     ///
     /// This is the primary ownership signal for devices whose advert name
     /// differs from their paired name — the common case for AirPods, where the
@@ -72,13 +72,20 @@ final class ContinuityOwnershipTracker {
         return false
     }
 
+    /// Number of paired-address suffixes the ownership gate can currently
+    /// match. Zero alongside a non-zero `BLEDiagnostics.hiddenByOwnership` is
+    /// the signature of AirPods being hidden by the gate.
+    var knownAddressSuffixCount: Int {
+        pairedAddressSuffixes?.count ?? 0
+    }
+
     /// Refresh the paired-address cache (at most once per 60 s; the paired list
     /// changes rarely and the query crosses into IOBluetooth).
     func refreshPairedAddressesIfStale(now: Date = Date()) {
-        if let fetched = audioAddressesFetchedAt,
+        if let fetched = pairedAddressesFetchedAt,
            now.timeIntervalSince(fetched) < 60 { return }
         pairedAddressSuffixes = Self.pairedAddressSuffixProvider()
-        audioAddressesFetchedAt = now
+        pairedAddressesFetchedAt = now
     }
 
     /// Confirm visible devices whose name is in `systemConnectedNames` (the

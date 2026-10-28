@@ -42,7 +42,7 @@ struct DevicesSettingsView: View {
                             // this button the row told the user to "allow
                             // Bluetooth" with no way to do it.
                             Button("Open Settings") {
-                                openBluetoothPrivacySettings()
+                                BluetoothPrivacySettings.open()
                             }
                             .controlSize(.small)
                         }
@@ -99,7 +99,7 @@ struct DevicesSettingsView: View {
                 SettingsRow(
                     icon: "antenna.radiowaves.left.and.right", tint: .blue,
                     title: "BLE Advertisements",
-                    subtitle: "Seen: \(d.advertsSeen) · Decoded: \(d.advertsDecoded) · Weak RSSI: \(d.rejectedWeakRSSI) · Not Continuity: \(d.rejectedNotContinuity) · No batteries: \(d.rejectedNoBatteries)"
+                    subtitle: "Seen: \(d.advertsSeen) · Decoded: \(d.advertsDecoded) · Weak RSSI: \(d.rejectedWeakRSSI) · Not Continuity: \(d.rejectedNotContinuity) · No batteries: \(d.rejectedNoBatteries) · Hidden by ownership: \(d.hiddenByOwnership) (paired addresses known: \(d.knownOwnerSuffixes))"
                 ) { EmptyView() }
                 RowDivider()
                 SettingsRow(
@@ -244,14 +244,6 @@ struct DevicesSettingsView: View {
         case .scanning, .unavailable: return "No accessories with a battery detected nearby."
         }
     }
-
-    /// Deep link to the Bluetooth privacy pane. Only meaningful when access was
-    /// denied — macOS does not re-prompt, so this is the single recovery path.
-    private func openBluetoothPrivacySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")
-        else { return }
-        NSWorkspace.shared.open(url)
-    }
 }
 
 /// One device row in the Devices pane: battery readout plus a per-device alert
@@ -277,10 +269,19 @@ private struct DeviceSettingsRow: View {
             Spacer(minLength: 10)
 
             if let percent = device.minPercent {
-                Text("\(percent)%")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(device.isConnected ? device.tint : .secondary)
-                    .monospacedDigit()
+                HStack(spacing: 3) {
+                    // One pod in the case: name the compartment, or the number
+                    // reads as the whole device's charge (same rule as the panel).
+                    if let sole = device.soleCompartment {
+                        Text(sole.shortLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("\(percent)%")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        .monospacedDigit()
+                }
             }
 
             Button { showAlertConfig.toggle() } label: {

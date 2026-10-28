@@ -28,6 +28,15 @@ struct BLEDiagnostics: Equatable {
     var rejectedWeakRSSI = 0         // below proximity floor / RSSI unavailable
     var rejectedNotContinuity = 0    // no Apple manufacturer data
     var rejectedNoBatteries = 0      // decoded but zero battery entries
+    /// Current number of decoded devices the ownership gate is hiding. A gauge,
+    /// not a counter: it is recomputed on every emit, so it reads as "N of my
+    /// nearby Apple devices are being withheld right now". Non-zero with an
+    /// empty Devices list is the signature of a gate that is too strict.
+    var hiddenByOwnership = 0
+    /// Paired-address suffixes the gate can match against (gauge). Zero here
+    /// alongside a non-zero `hiddenByOwnership` means the address path found
+    /// nothing to compare — the exact failure this PR fixed.
+    var knownOwnerSuffixes = 0
     var advertsDecoded = 0           // yielded a usable device
     var gattDevicesSeen = 0          // connected devices exposing Battery Service
     var gattReads = 0                // battery values read over GATT
@@ -207,12 +216,22 @@ final class BluetoothBatteryScanner: NSObject {
         // GATT devices are inherently paired-only (retrieveConnectedPeripherals),
         // so they pass untouched.
         ownership.refreshPairedAddressesIfStale()
+        // Keyed by name rather than by peripheral UUID: one physical device seen
+        // under several rotated privacy addresses is still one hidden device.
+        var hiddenNames = Set<String>()
         let owned = merged.filter { device in
             guard device.id.hasPrefix("ble:") else { return true }
             if ownership.isOwned(name: device.name) { return true }
             let uuid = UUID(uuidString: String(device.id.dropFirst("ble:".count)))
-            return ownership.isOwnedByAddress(uuid.flatMap { ownerSuffixes[$0] })
+            let visible = ownership.isOwnedByAddress(uuid.flatMap { ownerSuffixes[$0] })
+            if !visible { hiddenNames.insert(device.name) }
+            return visible
         }
+        // Gauges, refreshed with the list itself: they answer "is the gate
+        // eating my AirPods?" — the question this PR had to answer by hand from
+        // a live capture because nothing surfaced it.
+        diagnostics.hiddenByOwnership = hiddenNames.count
+        diagnostics.knownOwnerSuffixes = ownership.knownAddressSuffixCount
         // Collapse indistinguishable rows (same kind, name and battery readings)
         // — e.g. the same AirPods re-observed under a rotated privacy address.
         var seen = Set<String>()
@@ -387,11 +406,16 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
                 return
             }
             self.diagnostics.advertsDecoded += 1
+            let suffixChanged = ownerSuffix != nil && self.ownerSuffixes[uuid] != ownerSuffix
             if let ownerSuffix { self.ownerSuffixes[uuid] = ownerSuffix }
             // Refresh recency on every sighting, but only republish when the
             // reading actually changed — avoids a recompute per advertisement.
+            // A newly-learned owner suffix counts as a change: it can be the
+            // difference between gated-out and visible, and without re-emitting
+            // the device would stay hidden until its battery happened to move.
             if let existing = self.devices[uuid], Self.sameContent(existing, device) {
                 self.devices[uuid] = device
+                if suffixChanged { self.emit() }
                 return
             }
             self.devices[uuid] = device

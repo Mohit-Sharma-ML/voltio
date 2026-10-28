@@ -23,9 +23,12 @@ public enum PeripheralKind: String, Sendable, Equatable, Codable {
     /// pod, case). Used to label a lone reading — with one pod in the case only
     /// the worn pod advertises, and a bare percentage would read as the whole
     /// device's charge.
+    ///
+    /// AirPods Max is excluded despite being an AirPods model: it has a single
+    /// battery, so a lone reading *is* the whole device and must stay unlabelled.
     public var hasCompartments: Bool {
         switch self {
-        case .airpods, .airpodsPro, .airpodsMax: return true
+        case .airpods, .airpodsPro: return true
         default: return false
         }
     }
@@ -114,6 +117,18 @@ public struct PeripheralDevice: Sendable, Equatable, Identifiable, Codable {
             batteries: batteries, lastSeen: lastSeen ?? self.lastSeen,
             isConnected: isConnected
         )
+    }
+
+    /// The single reporting compartment, when a compartmented device is
+    /// broadcasting only one reading.
+    ///
+    /// `nil` when the device reports several compartments (the per-compartment
+    /// strip speaks for itself) or has a single battery by design, so the label
+    /// is only attached where the headline number would otherwise be mistaken
+    /// for the whole device's charge.
+    public var soleCompartment: BatteryReading? {
+        guard kind.hasCompartments, batteries.count == 1 else { return nil }
+        return batteries[0]
     }
 
     /// The most conservative (lowest) compartment level — what to surface as the

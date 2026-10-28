@@ -45,13 +45,9 @@ extension MenuPanelView {
                         // the headline number would otherwise look like the whole
                         // device's charge. Name the compartment when the device
                         // has several but only one is reporting.
-                        let soleCompartment = device.batteries.count == 1
-                            && device.kind.hasCompartments
-                            ? device.batteries[0].label
-                            : nil
                         HStack(spacing: 3) {
-                            if let soleCompartment {
-                                Text(compartmentLabel(soleCompartment))
+                            if let sole = device.soleCompartment {
+                                Text(sole.shortLabel)
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.secondary)
                             }
@@ -83,7 +79,7 @@ extension MenuPanelView {
 
     func compartment(_ reading: BatteryReading) -> some View {
         HStack(spacing: 4) {
-            Text(compartmentLabel(reading.label))
+            Text(reading.shortLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text("\(reading.percent)%")
@@ -94,14 +90,6 @@ extension MenuPanelView {
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.green)
             }
-        }
-    }
-
-    func compartmentLabel(_ label: String?) -> String {
-        switch label {
-        case "Left": return "L"
-        case "Right": return "R"
-        default: return label ?? ""
         }
     }
 
@@ -117,11 +105,24 @@ extension MenuPanelView {
         case .scanning, .unavailable:
             message = "No accessories with battery nearby."
         }
-        return HStack(spacing: 8) {
-            Image(systemName: "dot.radiowaves.left.and.right")
-                .foregroundStyle(.secondary)
-            Text(message).font(.caption).foregroundStyle(.secondary)
-            Spacer()
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .foregroundStyle(.secondary)
+                Text(message).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+            }
+            // Same dead end as the Settings row before this PR: after a denial
+            // macOS never re-prompts, so text alone leaves the user stuck.
+            if model.bluetoothAccess == .denied {
+                Button("Open Bluetooth Settings") {
+                    BluetoothPrivacySettings.open()
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tint)
+                .padding(.leading, 22)
+            }
         }
         .card()
     }

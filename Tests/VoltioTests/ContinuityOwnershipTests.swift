@@ -186,4 +186,18 @@ final class ContinuityOwnershipTests: XCTestCase {
         tracker.refreshPairedAddressesIfStale(now: now.addingTimeInterval(61))
         XCTAssertEqual(calls, 2)
     }
+
+    /// The diagnostics gauge reads this: zero means the address path has nothing
+    /// to compare, which is the state that hid every AirPods advert.
+    func testKnownAddressSuffixCountReflectsCache() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }
+        XCTAssertEqual(tracker.knownAddressSuffixCount, 0, "nothing fetched yet")
+
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = {
+            [[0x43, 0xB3, 0x52], [0x7E, 0x60, 0x0B]]
+        }
+        tracker.refreshPairedAddressesIfStale()
+        XCTAssertEqual(tracker.knownAddressSuffixCount, 2)
+    }
 }

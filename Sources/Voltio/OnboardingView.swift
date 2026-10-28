@@ -49,9 +49,7 @@ struct OnboardingView: View {
             .padding([.horizontal, .bottom], 24)
         }
         .frame(width: 420)
-        // No fixed height: the window uses .windowResizability(.contentSize), so
-        // it grows to fit however many steps there are. A hardcoded height
-        // silently clips when a step is added.
+        // No fixed height: .windowResizability(.contentSize) grows to fit, so a new step can't clip.
     }
 
     private var hero: some View {

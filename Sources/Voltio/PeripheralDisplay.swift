@@ -27,8 +27,7 @@ extension PeripheralKind {
 extension BatteryReading {
     var tint: Color { batteryTint(percent) }
 
-    /// Short compartment label for a headline number: "Left" → "L", "Case" →
-    /// "Case". Used where the full label would crowd the percentage.
+    /// "Left" → "L", "Right" → "R"; used where the full label would crowd the percentage.
     var shortLabel: String { compartmentShortLabel(label) }
 }
 

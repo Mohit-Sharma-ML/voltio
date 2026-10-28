@@ -41,10 +41,7 @@ extension MenuPanelView {
                     }
                     Spacer()
                     if let percent = device.minPercent {
-                        // With one pod in the case, only the worn pod reports —
-                        // the headline number would otherwise look like the whole
-                        // device's charge. Name the compartment when the device
-                        // has several but only one is reporting.
+                        // One pod in the case: name the compartment, or the number reads as the whole device's charge.
                         HStack(spacing: 3) {
                             if let sole = device.soleCompartment {
                                 Text(sole.shortLabel)
@@ -112,8 +109,7 @@ extension MenuPanelView {
                 Text(message).font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
-            // Same dead end as the Settings row before this PR: after a denial
-            // macOS never re-prompts, so text alone leaves the user stuck.
+            // After a denial macOS never re-prompts, so text alone leaves the user stuck.
             if model.bluetoothAccess == .denied {
                 Button("Open Bluetooth Settings") {
                     BluetoothPrivacySettings.open()

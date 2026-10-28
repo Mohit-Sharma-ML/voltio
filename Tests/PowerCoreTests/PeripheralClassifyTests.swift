@@ -62,8 +62,7 @@ extension PeripheralClassifyTests {
         )
     }
 
-    /// AirPods Max is a single-battery device: a lone reading is the whole
-    /// device, so it must not acquire a compartment label.
+    /// AirPods Max is single-battery: a lone reading is the whole device, so it must not be labelled.
     func testAirPodsMaxHasNoCompartments() {
         XCTAssertFalse(PeripheralKind.airpodsMax.hasCompartments)
         XCTAssertNil(device(kind: .airpodsMax, labels: ["Left"]).soleCompartment)
@@ -74,8 +73,7 @@ extension PeripheralClassifyTests {
         XCTAssertTrue(PeripheralKind.airpodsPro.hasCompartments)
     }
 
-    /// One pod reporting → label it. Both pods reporting → the strip speaks for
-    /// itself and the headline stays unadorned.
+    /// One pod reporting → labelled; both reporting → the strip speaks for itself.
     func testSoleCompartmentOnlySetForSingleReportingPod() {
         let lone = device(kind: .airpods, labels: ["Left"])
         XCTAssertEqual(lone.soleCompartment?.label, "Left")

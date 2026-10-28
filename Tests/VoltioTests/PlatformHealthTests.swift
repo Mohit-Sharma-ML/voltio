@@ -26,8 +26,7 @@ final class PlatformHealthTests: XCTestCase {
         }
     }
 
-    /// A denial needs an actionable remedy (System Settings); "not asked yet" does
-    /// not. They used to be one state, which made the diagnostics text ambiguous.
+    /// A denial needs a remedy (System Settings); "not asked yet" does not.
     func testBluetoothDenialAndPendingAreDistinguishable() {
         let denied = PlatformHealth.runChecks(bluetoothAccess: .denied).first { $0.id == "bt" }
         let pending = PlatformHealth.runChecks(bluetoothAccess: .awaitingPermission).first { $0.id == "bt" }

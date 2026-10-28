@@ -35,22 +35,17 @@ public struct AirPodsBattery: Sendable, Equatable {
     public var isEmpty: Bool { left == nil && right == nil && caseBattery == nil }
 }
 
-/// Decodes Apple BLE Continuity manufacturer data. This format is not published
-/// by Apple; the layout below follows widely-used community reverse engineering
-/// (OpenPods / furiousMAC) and may need per-model calibration.
+/// Decodes Apple BLE Continuity manufacturer data (unpublished; community reverse engineering, per-model calibration).
 public enum ContinuityDecoder {
     /// Apple's Bluetooth company identifier (little-endian in advert data).
     private static let appleCompanyID: (UInt8, UInt8) = (0x4C, 0x00)
     /// TLV type for the Proximity Pairing (AirPods) message.
     private static let proximityPairingType: UInt8 = 0x07
 
-    /// AirPods 4 (ANC) — the only model whose precise left-ear byte is
-    /// calibrated. Other models keep the classic nibble decode until someone
-    /// captures adverts from them and correlates against a system reading.
+    /// AirPods 4 (ANC) — the only model with a calibrated precise left-ear byte.
     static let preciseLeftEarModel: UInt16 = 0x1B20
 
-    /// Parse the manufacturer-data blob (including the 2-byte company id, as
-    /// CoreBluetooth provides it) and return AirPods battery if present.
+    /// Parse manufacturer data (including the 2-byte company id, as CoreBluetooth provides it).
     public static func decodeProximityPairing(manufacturerData data: Data) -> AirPodsBattery? {
         let bytes = [UInt8](data)
         guard bytes.count >= 4,
@@ -82,14 +77,7 @@ public enum ContinuityDecoder {
         return nil
     }
 
-    /// Owner address suffix carried in the advert tail (last 3 bytes), when
-    /// present. Apple's proximity-pairing advert for an owned device embeds the
-    /// paired phone's Bluetooth address here; it is constant per owner and is
-    /// what makes ownership checking possible without trusting display names.
-    ///
-    /// Observed on AirPods 4 (0x1B20): payload bytes 13–15 were `43 b3 52`,
-    /// matching the last three bytes of the paired iPhone's address. Returns
-    /// `nil` for payloads too short to carry it (classic 17-byte layouts).
+    /// Owner address suffix (last 3 bytes of the advert tail): the paired phone's address, constant per owner.
     public static func ownerAddressSuffix(manufacturerData data: Data) -> [UInt8]? {
         let bytes = [UInt8](data)
         guard bytes.count >= 4,
@@ -133,44 +121,19 @@ public enum ContinuityDecoder {
         let caseRaw = caseByte & 0x0F
         let chargeFlags = caseByte >> 4
 
-        // Model 0x1B20 (AirPods 4) broadcasts a precise percentage in byte 10;
-        // its nibble then only carries the tens digit. Confirmed for the LEFT
-        // ear from 183 adverts correlated against macOS's own reading:
-        // byte[10] tracked the system value while the nibble supplied only the
-        // tens band (0xF5 → 57/58/59, 0xF6 → 60).
-        //
-        // Three deliberate restrictions, each because the evidence supports
-        // exactly this much and no more:
-        //  - Scoped to the model it was measured on. Other models were never
-        //    captured, and byte 10 in the classic layout is unrelated data — a
-        //    different model whose tens digit happened to agree would be
-        //    silently rewritten by a rule with no evidence behind it.
-        //  - Only the left ear. In every captured advert the right ear reported
-        //    the 0xF "unavailable" sentinel, so no right-ear byte has evidence
-        //    behind it. Guessing one would be worse than omitting it.
-        //  - Guarded so it can only refine a value it already agrees with: adopt
-        //    the byte only when its tens digit matches the nibble's. Payloads
-        //    that keep the classic layout — including the 100% fixture, whose
-        //    nibble is 10 while byte 10 holds an unrelated 50 — fail this check
-        //    and keep the nibble-derived value.
+        // 0x1B20 puts the precise left-ear % in byte 10; its nibble carries only the tens digit.
         let preciseLeft: Int? = {
             guard model == preciseLeftEarModel, payload.count > 10 else { return nil }
             let candidate = Int(payload[10])
             guard candidate <= 100 else { return nil }
             let band = Int(leftRaw)
             guard band <= 10 else { return nil }
-            // Require exact agreement with the nibble's tens digit. Every one of
-            // 183 captured adverts satisfied this (0xF5 → 57/58/59, 0xF6 → 60),
-            // so the nibble and the precise byte advance together. Anything that
-            // disagrees belongs to a different field.
-            guard candidate / 10 == band else { return nil }
+            guard candidate / 10 == band else { return nil }  // only refine a value it agrees with
             return candidate
         }()
 
         return AirPodsBattery(
             model: model,
-            // The precise left byte refines the nibble's tens band when the
-            // guard accepted it; the right ear keeps the nibble value only.
             left: preciseLeft ?? percent(leftRaw),
             right: percent(rightRaw),
             caseBattery: percent(caseRaw),
@@ -185,8 +148,7 @@ public enum ContinuityDecoder {
         raw > 10 ? nil : Int(raw) * 10
     }
 
-    /// Parse-failure diagnostics: a malformed payload here usually means the
-    /// community-reverse-engineered layout needs per-model calibration.
+    /// Parse-failure diagnostics: a malformed payload usually means per-model calibration is needed.
     private static let log = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Voltio", category: "continuity"
     )

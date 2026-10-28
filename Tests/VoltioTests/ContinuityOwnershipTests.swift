@@ -140,12 +140,7 @@ final class ContinuityOwnershipTests: XCTestCase {
 
     // MARK: - Owner-address path (the AirPods case)
 
-    /// Real-world regression, 2026-10-23: one Mac saw the same AirPods under
-    /// three names — advert `Mohit's AirPods - Find My`, paired `AirPods 4
-    /// (ANC)`, system-connected `Mohit's AirPods`. Name matching cannot bridge
-    /// that, so every advert was rejected and AirPods never appeared. The
-    /// advert's tail carries the paired iPhone's address, which is what makes
-    /// ownership checkable without trusting a display name.
+    /// Regression: advert name `Mohit's AirPods - Find My` vs paired `AirPods 4 (ANC)`.
     func testAdvertNameMayDifferFromPairedName() {
         let tracker = ContinuityOwnershipTracker()
         // Paired list holds the model name, not the advert name.
@@ -187,8 +182,7 @@ final class ContinuityOwnershipTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
-    /// The diagnostics gauge reads this: zero means the address path has nothing
-    /// to compare, which is the state that hid every AirPods advert.
+    /// Zero means the address path has nothing to compare — the state that hid every AirPods advert.
     func testKnownAddressSuffixCountReflectsCache() {
         let tracker = ContinuityOwnershipTracker()
         ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }

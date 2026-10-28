@@ -57,14 +57,7 @@ final class ContinuityOwnershipTracker {
         return pairedNames?.contains(name) ?? false
     }
 
-    /// True when the advert's owner-address suffix matches a *paired* device on
-    /// this Mac.
-    ///
-    /// This is the primary ownership signal for devices whose advert name
-    /// differs from their paired name — the common case for AirPods, where the
-    /// advert reports `<owner>'s AirPods - Find My` while the paired list holds
-    /// the model name (`AirPods 4 (ANC)`). Name matching cannot bridge that, so
-    /// before this check every AirPods advert was discarded.
+    /// True when the advert's owner-address suffix matches a *paired* device (the primary signal for AirPods).
     func isOwnedByAddress(_ suffix: [UInt8]?) -> Bool {
         guard let suffix, suffix.count == 3 else { return false }
         if let cached = pairedAddressSuffixes,
@@ -72,15 +65,12 @@ final class ContinuityOwnershipTracker {
         return false
     }
 
-    /// Number of paired-address suffixes the ownership gate can currently
-    /// match. Zero alongside a non-zero `BLEDiagnostics.hiddenByOwnership` is
-    /// the signature of AirPods being hidden by the gate.
+    /// Paired-address suffixes the gate can match: zero + non-zero `hiddenByOwnership` means AirPods are being hidden.
     var knownAddressSuffixCount: Int {
         pairedAddressSuffixes?.count ?? 0
     }
 
-    /// Refresh the paired-address cache (at most once per 60 s; the paired list
-    /// changes rarely and the query crosses into IOBluetooth).
+    /// Refresh the paired-address cache (at most once per 60 s; the pair list changes rarely).
     func refreshPairedAddressesIfStale(now: Date = Date()) {
         if let fetched = pairedAddressesFetchedAt,
            now.timeIntervalSince(fetched) < 60 { return }
@@ -142,23 +132,7 @@ final class ContinuityOwnershipTracker {
         return Set(paired.compactMap { normalizedName($0.name as String?) })
     }
 
-    /// Last three bytes of every *paired* device's Bluetooth address.
-    ///
-    /// Apple's proximity-pairing advert for an owned device carries the paired
-    /// phone's address in its tail, and in practice the visible device name in
-    /// the advert differs from the paired-list name — observed on one Mac:
-    /// advert `Mohit's AirPods - Find My`, paired `AirPods 4 (ANC)`, same
-    /// hardware. Matching by name therefore never succeeded, which kept every
-    /// AirPods advert out of the list.
-    ///
-    /// Verified against a live capture: the advert's tail was `43 b3 52`, the
-    /// last three bytes of the paired iPhone `80:96:98:43:b3:52`. Note that the
-    /// phone reports `isConnected == false` over IOBluetooth even while it is
-    /// providing the identity — so the *paired* list, not the connected set, is
-    /// the right source.
-    ///
-    /// Matching every paired device is safe: a stranger's AirPods advertise
-    /// *their* owner's phone address, which is not in this Mac's paired list.
+    /// Last 3 bytes of each *paired* address (the advert carries the owner's); paired, not connected.
     nonisolated static func pairedDeviceAddressSuffixes() -> Set<[UInt8]> {
         guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else {
             return []

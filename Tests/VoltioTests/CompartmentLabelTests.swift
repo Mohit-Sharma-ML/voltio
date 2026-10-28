@@ -2,17 +2,10 @@ import XCTest
 import PowerCore
 @testable import Voltio
 
-/// Presentation rules for device compartment labels.
-///
-/// Regression context (2026-10-23): with one pod in its case only the worn pod
-/// advertises, so the row showed a bare percentage that read as the whole
-/// device's charge ("AirPods 4 (ANC) 23%" while that was the left pod alone).
-/// The headline now names the compartment until a second one reports.
+/// Compartment labels: one pod in the case used to read as the whole device's charge.
 final class CompartmentLabelTests: XCTestCase {
 
-    /// The deep link is a string, so a typo or a reworded URL fails silently at
-    /// runtime — the button would just do nothing. Pin the pieces the user needs
-    /// (security pane + Bluetooth anchor) so drift is a test failure.
+    /// Pin the deep link — a typo fails silently at runtime.
     func testBluetoothPrivacyDeepLinkTargetsThePrivacyPane() throws {
         let url = try XCTUnwrap(BluetoothPrivacySettings.url)
         XCTAssertEqual(url.scheme, "x-apple.systempreferences")
@@ -27,8 +20,7 @@ final class CompartmentLabelTests: XCTestCase {
     }
 
     func testNilLabelStaysEmpty() {
-        // A single-cell reading has no compartment name; rendering "nil" or a
-        // stray marker would be worse than nothing.
+        // A single-cell reading has no compartment name; "" beats a stray marker.
         XCTAssertEqual(compartmentShortLabel(nil), "")
     }
 

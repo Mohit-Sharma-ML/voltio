@@ -37,10 +37,8 @@ struct DevicesSettingsView: View {
                         icon: "dot.radiowaves.left.and.right", tint: .gray,
                         title: bluetoothTitle, subtitle: bluetoothSubtitle
                     ) {
+                        // macOS never re-prompts after a denial, so a text-only row has no way back.
                         if model.bluetoothAccess == .denied {
-                            // macOS never re-prompts after a denial, so without
-                            // this button the row told the user to "allow
-                            // Bluetooth" with no way to do it.
                             Button("Open Settings") {
                                 BluetoothPrivacySettings.open()
                             }
@@ -270,8 +268,7 @@ private struct DeviceSettingsRow: View {
 
             if let percent = device.minPercent {
                 HStack(spacing: 3) {
-                    // One pod in the case: name the compartment, or the number
-                    // reads as the whole device's charge (same rule as the panel).
+                    // One pod in the case: name the compartment, or the number reads as the whole device's charge.
                     if let sole = device.soleCompartment {
                         Text(sole.shortLabel)
                             .font(.caption.weight(.semibold))

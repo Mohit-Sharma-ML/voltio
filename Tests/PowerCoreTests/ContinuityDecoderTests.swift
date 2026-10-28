@@ -29,10 +29,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertFalse(battery.caseCharging)
     }
 
-    /// Real-world regression: advert captured live 2026-10-17 from AirPods 4
-    /// ANC (model 0x1B20, previously untested byte) via a 30 s BLE scan.
-    /// Tail bytes randomized per advert by Apple — masked with zeros; only
-    /// the first 10 payload bytes are decoder-relevant.
+    /// Advert captured live 2026-10-17 from AirPods 4 ANC (0x1B20); tail masked with zeros.
     func testRealCapturedAirPods4ANC() throws {
         let data = Data([
             0x4C, 0x00, 0x07, 0x19,             // Apple, type 0x07, len 25
@@ -96,9 +93,7 @@ final class ContinuityDecoderTests: XCTestCase {
 
     // MARK: - Owner address suffix
 
-    /// Real advert tail carried the paired iPhone's address suffix
-    /// (iPhone 80:96:98:43:b3:52 → payload[13...15] = 43 b3 52). This is what
-    /// lets ownership be proven without trusting a display name.
+    /// Real advert tail: paired iPhone 80:96:98:43:b3:52 → payload[13...15] = 43 b3 52.
     func testOwnerAddressSuffixFromRealAdvert() {
         let data = Data([
             0x4C, 0x00, 0x07, 0x19,
@@ -108,8 +103,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data), [0x43, 0xB3, 0x52])
     }
 
-    /// Classic short payloads do not carry the tail; return nil rather than
-    /// fabricating a suffix from unrelated bytes.
+    /// Classic short payloads carry no tail; nil, not a fabricated suffix.
     func testOwnerAddressSuffixAbsentOnShortPayload() {
         let data = Data([0x4C, 0x00, 0x07, 0x06, 0x01, 0x0E, 0x20, 0x20, 0x55, 0x05])
         XCTAssertNil(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data))
@@ -122,10 +116,7 @@ final class ContinuityDecoderTests: XCTestCase {
 
     // MARK: - Precise left-ear refinement (AirPods 4, model 0x1B20)
 
-    /// Real adverts captured 2026-10-23 from AirPods 4 (ANC) while macOS
-    /// reported 57–59% left and 88% right. The classic nibble alone yields only
-    /// the tens band (0xF5 → 50%), which is why the panel disagreed with the OS.
-    /// Byte 10 carried the exact value.
+    /// Real adverts from AirPods 4 (ANC), macOS reading 57–59% left; the nibble alone yields only 50%.
     func testAirPods4UsesPreciseLeftByte() throws {
         // payload: 01 1b 20 22 f5 8f 12 00 09 09 3b ...
         let data = Data([
@@ -141,11 +132,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertNil(battery.caseBattery)    // 0xF sentinel
     }
 
-    /// Consecutive real adverts as the left ear drained. Values and the pods
-    /// byte are transcribed from the 2026-10-23 capture: 0xF5 accompanied
-    /// 57/58/59 and 0xF6 accompanied 60 — in all 183 adverts the nibble's tens
-    /// digit matched the precise byte, which is what the decoder's guard relies
-    /// on.
+    /// Consecutive real adverts as the left ear drained: 0xF5 → 57/58/59, 0xF6 → 60.
     func testAirPods4PreciseLeftTracksDrain() throws {
         for (pods, byte10, expected) in [
             (0xF5, 0x39, 57), (0xF5, 0x3A, 58), (0xF5, 0x3B, 59), (0xF6, 0x3C, 60),
@@ -162,9 +149,7 @@ final class ContinuityDecoderTests: XCTestCase {
         }
     }
 
-    /// The refinement must never fire on a classic payload. The 100% fixture's
-    /// nibble is 10 (100%) while its byte 10 holds an unrelated 0x32 (50) — the
-    /// tens digits disagree, so the nibble value must be kept.
+    /// Classic payload guard: 100% nibble vs unrelated byte 10 = 50, so the nibble wins.
     func testPreciseByteDoesNotOverrideMismatchedClassicPayload() throws {
         var payload: [UInt8] = [0x01, 0x1B, 0x20, 0x73, 0xAA, 0x97]
         payload += Array(repeating: 0, count: 4)
@@ -179,8 +164,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.caseBattery, 70)
     }
 
-    /// A right ear that is genuinely present must still decode from its nibble;
-    /// the refinement is left-only and must not disturb it.
+    /// A genuinely present right ear still decodes from its nibble; the refinement is left-only.
     func testPreciseLeftDoesNotAffectPresentRightEar() throws {
         // status 0x22 → flip false → left=low nibble (5), right=high nibble (8)
         var payload: [UInt8] = [0x01, 0x1B, 0x20, 0x22, 0x85, 0x00]
@@ -195,14 +179,9 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.right, 80)          // untouched nibble value
     }
 
-    /// The precise byte was calibrated on 0x1B20 only, so it must never fire on
-    /// another model — even one whose byte 10 happens to satisfy the tens-digit
-    /// guard. Unknown models have no evidence for byte 10; treating it as a
-    /// percentage would silently rewrite a level on a guess.
+    /// Calibrated on 0x1B20 only, so another model's byte 10 must never be read as a percentage.
     func testPreciseByteIsScopedToItsCalibratedModel() throws {
-        // Same payload as the AirPods 4 case but model 0x0E20 (AirPods Pro),
-        // whose byte 10 is unrelated data. Without the model gate this would
-        // decode as 57%.
+        // Same payload as AirPods 4 but model 0x0E20; without the model gate this would decode as 57%.
         var payload: [UInt8] = [0x01, 0x0E, 0x20, 0x22, 0x85, 0x00]
         payload += Array(repeating: 0, count: 4)
         payload.append(57)
@@ -216,8 +195,7 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertEqual(battery.right, 80)
     }
 
-    /// The calibrated model is stated once, in code, so a future calibration
-    /// (or a second model) is a deliberate edit rather than a silent widening.
+    /// Stated once in code, so widening the calibration is a deliberate edit.
     func testCalibratedModelMatchesAirPods4() {
         XCTAssertEqual(ContinuityDecoder.preciseLeftEarModel, 0x1B20)
     }

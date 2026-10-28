@@ -9,12 +9,9 @@ private let btLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Voltio", 
 /// Coarse Bluetooth availability used to drive the Connected Devices UI.
 enum BluetoothAccess: Equatable {
     case scanning
-    /// The user has answered the system prompt with "Don't Allow" (or policy
-    /// restricts it). The prompt will not appear again — the only remedy is the
-    /// Bluetooth privacy pane in System Settings, so callers can offer a link.
+    /// "Don't Allow" was answered (or policy blocks it); macOS never re-prompts, so callers offer a link.
     case denied
-    /// The prompt has not been shown yet. Nothing is broken and no remedy is
-    /// needed; the system asks the first time a scan starts.
+    /// The prompt has not been shown yet; nothing is broken and no remedy is needed.
     case awaitingPermission
     case poweredOff
     case unavailable
@@ -28,14 +25,9 @@ struct BLEDiagnostics: Equatable {
     var rejectedWeakRSSI = 0         // below proximity floor / RSSI unavailable
     var rejectedNotContinuity = 0    // no Apple manufacturer data
     var rejectedNoBatteries = 0      // decoded but zero battery entries
-    /// Current number of decoded devices the ownership gate is hiding. A gauge,
-    /// not a counter: it is recomputed on every emit, so it reads as "N of my
-    /// nearby Apple devices are being withheld right now". Non-zero with an
-    /// empty Devices list is the signature of a gate that is too strict.
+    /// Devices the ownership gate is hiding right now (gauge, recomputed per emit).
     var hiddenByOwnership = 0
-    /// Paired-address suffixes the gate can match against (gauge). Zero here
-    /// alongside a non-zero `hiddenByOwnership` means the address path found
-    /// nothing to compare — the exact failure this PR fixed.
+    /// Paired-address suffixes the gate can match (gauge); zero here + hidden > 0 is the bug signature.
     var knownOwnerSuffixes = 0
     var advertsDecoded = 0           // yielded a usable device
     var gattDevicesSeen = 0          // connected devices exposing Battery Service
@@ -60,9 +52,7 @@ final class BluetoothBatteryScanner: NSObject {
     private var central: CBCentralManager?
     /// AirPods/Beats decoded from Continuity advertisements (no connection).
     private var devices: [UUID: PeripheralDevice] = [:]
-    /// Owner-address suffix advertised by each Continuity device, used by the
-    /// ownership gate. Kept separate from `PeripheralDevice` because it is
-    /// transport metadata, not something the UI displays.
+    /// Owner-address suffix per Continuity device (transport metadata, not displayed).
     private var ownerSuffixes: [UUID: [UInt8]] = [:]
     private let staleAfter: TimeInterval = 60
 
@@ -194,30 +184,16 @@ final class BluetoothBatteryScanner: NSObject {
         let cutoff = Date().addingTimeInterval(-staleAfter)
         let before = devices.count
         devices = devices.filter { $0.value.lastSeen >= cutoff }
-        // Drop owner suffixes for devices no longer tracked, so the map cannot
-        // grow without bound as peripherals rotate privacy addresses.
+        // Bounded: drop suffixes for devices no longer tracked as privacy addresses rotate.
         ownerSuffixes = ownerSuffixes.filter { devices[$0.key] != nil }
         if devices.count != before { emit() }
     }
 
     private func emit() {
         let merged = Array(devices.values) + Array(gattDevices.values)
-        // Ownership gate: Continuity adverts (the `ble:` path) fire for ANY
-        // Apple device in radio range — yours, a colleague's, a stranger's
-        // (RSSI ≥ -65 is proximity, not ownership). Two signals are accepted:
-        //
-        //  1. Owner-address match — the advert's tail carries the paired
-        //     phone's Bluetooth address. This is the only signal that works for
-        //     AirPods, whose advert name differs from their paired name, and it
-        //     is a hardware identity rather than a display string.
-        //  2. Name match against the paired list, retained for devices whose
-        //     advert name does match (existing behaviour).
-        //
-        // GATT devices are inherently paired-only (retrieveConnectedPeripherals),
-        // so they pass untouched.
+        // Ownership gate: `ble:` adverts fire for any Apple device in range; address match first, then name.
         ownership.refreshPairedAddressesIfStale()
-        // Keyed by name rather than by peripheral UUID: one physical device seen
-        // under several rotated privacy addresses is still one hidden device.
+        // Keyed by name: one physical device under rotated privacy addresses is still one hidden device.
         var hiddenNames = Set<String>()
         let owned = merged.filter { device in
             guard device.id.hasPrefix("ble:") else { return true }
@@ -227,13 +203,9 @@ final class BluetoothBatteryScanner: NSObject {
             if !visible { hiddenNames.insert(device.name) }
             return visible
         }
-        // Gauges, refreshed with the list itself: they answer "is the gate
-        // eating my AirPods?" — the question this PR had to answer by hand from
-        // a live capture because nothing surfaced it.
         diagnostics.hiddenByOwnership = hiddenNames.count
         diagnostics.knownOwnerSuffixes = ownership.knownAddressSuffixCount
-        // Collapse indistinguishable rows (same kind, name and battery readings)
-        // — e.g. the same AirPods re-observed under a rotated privacy address.
+        // Collapse duplicate rows (e.g. the same AirPods under a rotated privacy address).
         var seen = Set<String>()
         var collapsedSignatures = Set<String>()
         let unique = owned.filter { device in
@@ -408,11 +380,7 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
             self.diagnostics.advertsDecoded += 1
             let suffixChanged = ownerSuffix != nil && self.ownerSuffixes[uuid] != ownerSuffix
             if let ownerSuffix { self.ownerSuffixes[uuid] = ownerSuffix }
-            // Refresh recency on every sighting, but only republish when the
-            // reading actually changed — avoids a recompute per advertisement.
-            // A newly-learned owner suffix counts as a change: it can be the
-            // difference between gated-out and visible, and without re-emitting
-            // the device would stay hidden until its battery happened to move.
+            // A newly-learned owner suffix can flip the device from gated-out to visible.
             if let existing = self.devices[uuid], Self.sameContent(existing, device) {
                 self.devices[uuid] = device
                 if suffixChanged { self.emit() }

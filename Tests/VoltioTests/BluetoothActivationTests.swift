@@ -1,3 +1,4 @@
+import CoreBluetooth
 import PowerCore
 import XCTest
 @testable import Voltio
@@ -55,6 +56,20 @@ final class BluetoothActivationTests: XCTestCase {
     func testExistingUserActivatesAtLaunch() {
         let model = makeModel(onboarded: true)
         XCTAssertTrue(model.isBluetoothActivated, "an existing user must not lose accessory battery")
+    }
+
+    /// Before activation there is no radio, but with permission already granted the app must not
+    /// report `.unavailable` — that renders as "Radio unavailable — verify the Bluetooth
+    /// entitlement", a false alarm during onboarding. Deferral means "not started yet".
+    func testAccessBeforeActivationIsNeverUnavailableWhenGranted() throws {
+        let scanner = BluetoothBatteryScanner()
+        try XCTSkipUnless(
+            CBCentralManager.authorization == .allowedAlways,
+            "machine has not granted Bluetooth, cannot exercise the authorized-but-dormant path"
+        )
+        XCTAssertFalse(scanner.isActivated)
+        XCTAssertNotEqual(scanner.access, .unavailable)
+        XCTAssertEqual(scanner.access, .awaitingPermission)
     }
 
     // MARK: - Helpers

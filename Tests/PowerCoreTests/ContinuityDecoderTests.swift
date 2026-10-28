@@ -93,25 +93,43 @@ final class ContinuityDecoderTests: XCTestCase {
 
     // MARK: - Owner address suffix
 
-    /// Real advert tail: paired iPhone 80:96:98:43:b3:52 → payload[13...15] = 43 b3 52.
-    func testOwnerAddressSuffixFromRealAdvert() {
+    /// Live capture (session A): tail 13-15 = paired iPhone 80:96:98:43:b3:52, 16-18 = the pods' own suffix.
+    func testOwnerAddressSuffixesFromRealAdvert() {
         let data = Data([
             0x4C, 0x00, 0x07, 0x19,
             0x01, 0x1B, 0x20, 0x22, 0xF5, 0x8F, 0x12, 0x00, 0x09, 0x09, 0x3B,
-            0xFF, 0xFF, 0x43, 0xB3, 0x52,
-        ] + Array(repeating: 0, count: 9))
-        XCTAssertEqual(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data), [0x43, 0xB3, 0x52])
+            0xFF, 0xFF, 0x43, 0xB3, 0x52, 0x5E, 0x30, 0x44,
+        ] + Array(repeating: 0, count: 6))
+        XCTAssertEqual(
+            ContinuityDecoder.ownerAddressSuffixes(manufacturerData: data),
+            [[0x43, 0xB3, 0x52], [0x5E, 0x30, 0x44]]
+        )
     }
 
-    /// Classic short payloads carry no tail; nil, not a fabricated suffix.
-    func testOwnerAddressSuffixAbsentOnShortPayload() {
+    /// Live capture (session B, same Mac hours later): 13-15 rotated to bytes matching nothing while
+    /// 16-18 still held the pods' suffix. Both must be returned so either can prove ownership.
+    func testOwnerAddressSuffixesSurviveRotationOfTheFirstField() {
+        let payload: [UInt8] = [
+            0x01, 0x1B, 0x20, 0x55, 0xAA, 0xB3, 0x31, 0x00, 0x08, 0x48,
+            0xE4, 0xE4, 0x1F, 0x90, 0x05, 0x6F, 0x5E, 0x30, 0x44, 0x26,
+            0x13, 0xCA, 0x93, 0xF6, 0x39,
+        ]
+        let suffixes = ContinuityDecoder.ownerAddressSuffixes(
+            manufacturerData: Data([0x4C, 0x00, 0x07, 0x19] + payload))
+        XCTAssertEqual(suffixes.count, 2)
+        XCTAssertEqual(suffixes[0], [0x90, 0x05, 0x6F])   // rotated, matches no paired device
+        XCTAssertEqual(suffixes[1], [0x5E, 0x30, 0x44])   // stable, matches the paired AirPods
+    }
+
+    /// Classic short payloads carry no tail; empty, not fabricated suffixes.
+    func testOwnerAddressSuffixesAbsentOnShortPayload() {
         let data = Data([0x4C, 0x00, 0x07, 0x06, 0x01, 0x0E, 0x20, 0x20, 0x55, 0x05])
-        XCTAssertNil(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data))
+        XCTAssertEqual(ContinuityDecoder.ownerAddressSuffixes(manufacturerData: data), [])
     }
 
-    func testOwnerAddressSuffixRejectsNonApple() {
+    func testOwnerAddressSuffixesRejectsNonApple() {
         let data = Data([0x4D, 0x00, 0x07, 0x19] + Array(repeating: 0x43, count: 20))
-        XCTAssertNil(ContinuityDecoder.ownerAddressSuffix(manufacturerData: data))
+        XCTAssertEqual(ContinuityDecoder.ownerAddressSuffixes(manufacturerData: data), [])
     }
 
     // MARK: - Precise levels (AirPods 4, model 0x1B20)

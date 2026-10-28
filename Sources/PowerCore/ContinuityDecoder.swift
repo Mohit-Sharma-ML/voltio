@@ -77,12 +77,17 @@ public enum ContinuityDecoder {
         return nil
     }
 
-    /// Owner address suffix (last 3 bytes of the advert tail): the paired phone's address, constant per owner.
-    public static func ownerAddressSuffix(manufacturerData data: Data) -> [UInt8]? {
+    /// Owner address suffixes carried in the advert tail: bytes 13-15 and 16-18.
+    ///
+    /// Two live sessions disagree about which one is stable. Session A had 13-15 = the paired
+    /// iPhone's suffix; session B (same Mac, same pods, hours later) had 13-15 = bytes matching
+    /// nothing while 16-18 held the paired AirPods' own suffix. 13-15 rotates, so neither field
+    /// alone is trustworthy — return both and accept a match on either.
+    public static func ownerAddressSuffixes(manufacturerData data: Data) -> [[UInt8]] {
         let bytes = [UInt8](data)
         guard bytes.count >= 4,
               bytes[0] == appleCompanyID.0, bytes[1] == appleCompanyID.1
-        else { return nil }
+        else { return [] }
 
         var index = 2
         while index + 1 < bytes.count {
@@ -90,15 +95,15 @@ public enum ContinuityDecoder {
             let length = Int(bytes[index + 1])
             let payloadStart = index + 2
             let payloadEnd = payloadStart + length
-            guard payloadEnd <= bytes.count else { return nil }
+            guard payloadEnd <= bytes.count else { return [] }
             if type == proximityPairingType {
                 let payload = Array(bytes[payloadStart..<payloadEnd])
-                guard payload.count >= 16 else { return nil }
-                return Array(payload[13...15])
+                guard payload.count >= 19 else { return [] }
+                return [Array(payload[13...15]), Array(payload[16...18])]
             }
             index = payloadEnd
         }
-        return nil
+        return []
     }
 
     /// Decode the proximity-pairing payload (excludes type + length bytes).

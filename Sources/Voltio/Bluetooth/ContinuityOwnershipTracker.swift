@@ -57,19 +57,18 @@ final class ContinuityOwnershipTracker {
         return pairedNames?.contains(name) ?? false
     }
 
-    /// True when the advert's owner-address suffix matches a *paired* device (the primary signal for AirPods).
-    func isOwnedByAddress(_ suffix: [UInt8]?) -> Bool {
-        guard let suffix, suffix.count == 3 else { return false }
-        if let cached = pairedAddressSuffixes,
-           cached.contains(suffix) { return true }
-        return false
+    /// True when either advert suffix matches a *paired* device. Two candidate fields because the
+    /// 13-15 slot rotated between live sessions while 16-18 stayed stable.
+    func isOwnedByAddress(_ suffixes: [[UInt8]]) -> Bool {
+        guard let cached = pairedAddressSuffixes else { return false }
+        return suffixes.contains { $0.count == 3 && cached.contains($0) }
     }
 
     /// The gate itself: may this merged device be shown? Non-`ble:` ids are inherently paired, so they pass.
     /// Extracted from the scanner's filter so the bug site is testable without CoreBluetooth.
-    func isVisible(deviceID: String, name: String, suffix: [UInt8]?) -> Bool {
+    func isVisible(deviceID: String, name: String, suffixes: [[UInt8]]) -> Bool {
         guard deviceID.hasPrefix("ble:") else { return true }
-        return isOwned(name: name) || isOwnedByAddress(suffix)
+        return isOwned(name: name) || isOwnedByAddress(suffixes)
     }
 
     /// Paired-address suffixes the gate can match: zero + non-zero `hiddenByOwnership` means AirPods are being hidden.

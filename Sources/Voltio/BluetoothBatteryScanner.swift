@@ -53,7 +53,7 @@ final class BluetoothBatteryScanner: NSObject {
     /// AirPods/Beats decoded from Continuity advertisements (no connection).
     private var devices: [UUID: PeripheralDevice] = [:]
     /// Owner-address suffix per Continuity device (transport metadata, not displayed).
-    private var ownerSuffixes: [UUID: [UInt8]] = [:]
+    private var ownerSuffixes: [UUID: [[UInt8]]] = [:]
     private let staleAfter: TimeInterval = 60
 
     /// Devices read over a GATT connection (iPhone, iPad, Watch…), keyed by id.
@@ -105,7 +105,10 @@ final class BluetoothBatteryScanner: NSObject {
         @unknown default:
             return .unavailable
         }
-        switch central?.state ?? .unknown {
+        // Authorized but not yet activated (onboarding still open): the radio simply isn't running
+        // yet. Reporting .unavailable here would surface "radio unavailable — verify entitlement".
+        guard let central else { return .awaitingPermission }
+        switch central.state {
         case .poweredOn: return .scanning
         case .poweredOff: return .poweredOff
         default: return .unavailable
@@ -210,7 +213,7 @@ final class BluetoothBatteryScanner: NSObject {
             let visible = ownership.isVisible(
                 deviceID: device.id,
                 name: device.name,
-                suffix: uuid.flatMap { ownerSuffixes[$0] }
+                suffixes: uuid.flatMap { ownerSuffixes[$0] } ?? []
             )
             if !visible { hiddenNames.insert(device.name) }
             return visible
@@ -382,7 +385,7 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
         // Extract Sendable values before hopping to the main actor.
         let uuid = peripheral.identifier
         let advertisedName = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
-        let ownerSuffix = ContinuityDecoder.ownerAddressSuffix(manufacturerData: manufacturerData)
+        let ownerSuffixes = ContinuityDecoder.ownerAddressSuffixes(manufacturerData: manufacturerData)
 
         MainActorIsolation.assume {
             guard let device = Self.makeDevice(uuid: uuid, advertisedName: advertisedName, pods: pods) else {
@@ -390,8 +393,8 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
                 return
             }
             self.diagnostics.advertsDecoded += 1
-            let suffixChanged = ownerSuffix != nil && self.ownerSuffixes[uuid] != ownerSuffix
-            if let ownerSuffix { self.ownerSuffixes[uuid] = ownerSuffix }
+            let suffixChanged = !ownerSuffixes.isEmpty && self.ownerSuffixes[uuid] != ownerSuffixes
+            if !ownerSuffixes.isEmpty { self.ownerSuffixes[uuid] = ownerSuffixes }
             // A newly-learned owner suffix can flip the device from gated-out to visible.
             if let existing = self.devices[uuid], Self.sameContent(existing, device) {
                 self.devices[uuid] = device

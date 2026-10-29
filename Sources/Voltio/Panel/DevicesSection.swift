@@ -95,6 +95,8 @@ extension MenuPanelView {
         switch model.bluetoothAccess {
         case .denied:
             message = "Bluetooth access denied — enable Voltio in System Settings → Privacy & Security → Bluetooth."
+        case .restricted:
+            message = "Bluetooth is blocked by your organization's device policy. Contact IT to allow Voltio."
         case .awaitingPermission:
             message = "Allow Bluetooth to see AirPods & accessory battery."
         case .poweredOff:
@@ -109,8 +111,9 @@ extension MenuPanelView {
                 Text(message).font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
-            // After a denial macOS never re-prompts, so text alone leaves the user stuck.
-            if model.bluetoothAccess == .denied {
+            // After a denial macOS never re-prompts, so text alone leaves the user stuck. A policy
+            // block gets no link: nothing on that pane can be changed.
+            if model.bluetoothAccess.offersSettingsLink {
                 Button("Open Bluetooth Settings") {
                     BluetoothPrivacySettings.open()
                 }

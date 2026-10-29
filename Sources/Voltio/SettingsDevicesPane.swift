@@ -38,7 +38,8 @@ struct DevicesSettingsView: View {
                         title: bluetoothTitle, subtitle: bluetoothSubtitle
                     ) {
                         // macOS never re-prompts after a denial, so a text-only row has no way back.
-                        if model.bluetoothAccess == .denied {
+                        // A policy block offers no link: there is nothing to toggle.
+                        if model.bluetoothAccess.offersSettingsLink {
                             Button("Open Settings") {
                                 BluetoothPrivacySettings.open()
                             }
@@ -226,6 +227,7 @@ struct DevicesSettingsView: View {
     private var bluetoothTitle: String {
         switch model.bluetoothAccess {
         case .denied: return "Bluetooth access denied"
+        case .restricted: return "Bluetooth blocked by policy"
         case .awaitingPermission: return "Bluetooth permission pending"
         case .poweredOff: return "Bluetooth is off"
         case .scanning, .unavailable: return "No accessories nearby"
@@ -236,6 +238,8 @@ struct DevicesSettingsView: View {
         switch model.bluetoothAccess {
         case .denied:
             return "macOS won't ask again. Enable Voltio under System Settings → Privacy & Security → Bluetooth."
+        case .restricted:
+            return "Your organization's device policy blocks Bluetooth for Voltio. There is no setting you can change; contact IT."
         case .awaitingPermission:
             return "macOS will ask for Bluetooth access; AirPods and accessory battery need it."
         case .poweredOff: return "Turn on Bluetooth to detect accessories."

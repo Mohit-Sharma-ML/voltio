@@ -9,12 +9,22 @@ private let btLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Voltio", 
 /// Coarse Bluetooth availability used to drive the Connected Devices UI.
 enum BluetoothAccess: Equatable {
     case scanning
-    /// "Don't Allow" was answered (or policy blocks it); macOS never re-prompts, so callers offer a link.
+    /// "Don't Allow" was answered; macOS never re-prompts, so callers offer a Settings link.
     case denied
+    /// Blocked by a device-management policy. No self-service remedy: the toggle is absent or
+    /// disabled, so a Settings link would be a dead end. Measured via `CBManagerAuthorization.restricted`.
+    case restricted
     /// The prompt has not been shown yet; nothing is broken and no remedy is needed.
     case awaitingPermission
     case poweredOff
     case unavailable
+
+    /// Whether honouring this state means opening the Bluetooth privacy pane.
+    ///
+    /// True only for a user denial, where the toggle exists and is off. False for a policy
+    /// restriction, where there is nothing to toggle — offering a link there sends the user to a
+    /// setting they cannot change.
+    var offersSettingsLink: Bool { self == .denied }
 }
 
 /// Cumulative diagnostic counters for the BLE scan pipeline, surfaced in
@@ -96,8 +106,10 @@ final class BluetoothBatteryScanner: NSObject {
 
     var access: BluetoothAccess {
         switch CBCentralManager.authorization {
-        case .denied, .restricted:
+        case .denied:
             return .denied
+        case .restricted:
+            return .restricted
         case .notDetermined:
             return .awaitingPermission
         case .allowedAlways:

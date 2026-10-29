@@ -94,8 +94,12 @@ enum PlatformHealth {
             return Check(id: "bt", name: "Bluetooth access", passed: true, detail: "Authorized, powered on")
         case .poweredOff:
             return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Bluetooth is powered off (user-toggleable)")
-        case .needsPermission:
-            return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Permission denied or not granted — check entitlement + TCC — verify the Bluetooth entitlement + permission")
+        case .denied:
+            return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Permission denied — enable Voltio in System Settings → Privacy & Security → Bluetooth")
+        case .restricted:
+            return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Restricted by device-management policy — no self-service remedy; IT must allow Voltio")
+        case .awaitingPermission:
+            return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Permission not requested yet — macOS prompts on the first scan")
         case .unavailable:
             return Check(id: "bt", name: "Bluetooth access", passed: false, detail: "Radio unavailable — verify the Bluetooth entitlement + permission")
         }

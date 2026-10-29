@@ -26,6 +26,18 @@ extension PeripheralKind {
 
 extension BatteryReading {
     var tint: Color { batteryTint(percent) }
+
+    /// "Left" → "L", "Right" → "R"; used where the full label would crowd the percentage.
+    var shortLabel: String { compartmentShortLabel(label) }
+}
+
+/// "Left" → "L", "Right" → "R"; other labels pass through; `nil` stays empty.
+func compartmentShortLabel(_ label: String?) -> String {
+    switch label {
+    case "Left": return "L"
+    case "Right": return "R"
+    default: return label ?? ""
+    }
 }
 
 extension PeripheralDevice {

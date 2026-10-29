@@ -19,6 +19,14 @@ public enum PeripheralKind: String, Sendable, Equatable, Codable {
     case mac
     case other
 
+    /// True for devices whose battery is reported per compartment (left/right pod, case).
+    public var hasCompartments: Bool {
+        switch self {
+        case .airpods, .airpodsPro: return true
+        default: return false
+        }
+    }
+
     /// Best-effort classification of a connected device by its advertised name,
     /// used for GATT devices (iPhone/iPad/Watch/Mac) where we only have the name.
     public static func classify(deviceName name: String) -> PeripheralKind {
@@ -103,6 +111,12 @@ public struct PeripheralDevice: Sendable, Equatable, Identifiable, Codable {
             batteries: batteries, lastSeen: lastSeen ?? self.lastSeen,
             isConnected: isConnected
         )
+    }
+
+    /// The single reporting compartment, when a compartmented device is broadcasting only one reading.
+    public var soleCompartment: BatteryReading? {
+        guard kind.hasCompartments, batteries.count == 1 else { return nil }
+        return batteries[0]
     }
 
     /// The most conservative (lowest) compartment level — what to surface as the

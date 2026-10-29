@@ -34,6 +34,13 @@ final class ContinuityOwnershipTracker {
     /// touching the framework.
     nonisolated(unsafe) static var pairedNamesProvider: () -> Set<String>? = fetchPairedNames
 
+    /// Paired-device address-suffix source, injectable for tests.
+    nonisolated(unsafe) static var pairedAddressSuffixProvider: () -> Set<[UInt8]> = pairedDeviceAddressSuffixes
+
+    /// Cached paired-device address suffixes (refreshed at most once a minute).
+    private var pairedAddressSuffixes: Set<[UInt8]>?
+    private var pairedAddressesFetchedAt: Date?
+
     /// Case/space-insensitive name normalization for matching an advert's
     /// local name against the system's paired/connected names.
     nonisolated static func normalizedName(_ name: String?) -> String? {
@@ -48,6 +55,33 @@ final class ContinuityOwnershipTracker {
         let name = rawName.lowercased()
         if confirmedOwnedNames.contains(name) { return true }
         return pairedNames?.contains(name) ?? false
+    }
+
+    /// True when either advert suffix matches a *paired* device. Two candidate fields because the
+    /// 13-15 slot rotated between live sessions while 16-18 stayed stable.
+    func isOwnedByAddress(_ suffixes: [[UInt8]]) -> Bool {
+        guard let cached = pairedAddressSuffixes else { return false }
+        return suffixes.contains { $0.count == 3 && cached.contains($0) }
+    }
+
+    /// The gate itself: may this merged device be shown? Non-`ble:` ids are inherently paired, so they pass.
+    /// Extracted from the scanner's filter so the bug site is testable without CoreBluetooth.
+    func isVisible(deviceID: String, name: String, suffixes: [[UInt8]]) -> Bool {
+        guard deviceID.hasPrefix("ble:") else { return true }
+        return isOwned(name: name) || isOwnedByAddress(suffixes)
+    }
+
+    /// Paired-address suffixes the gate can match: zero + non-zero `hiddenByOwnership` means AirPods are being hidden.
+    var knownAddressSuffixCount: Int {
+        pairedAddressSuffixes?.count ?? 0
+    }
+
+    /// Refresh the paired-address cache (at most once per 60 s; the pair list changes rarely).
+    func refreshPairedAddressesIfStale(now: Date = Date()) {
+        if let fetched = pairedAddressesFetchedAt,
+           now.timeIntervalSince(fetched) < 60 { return }
+        pairedAddressSuffixes = Self.pairedAddressSuffixProvider()
+        pairedAddressesFetchedAt = now
     }
 
     /// Confirm visible devices whose name is in `systemConnectedNames` (the
@@ -102,6 +136,23 @@ final class ContinuityOwnershipTracker {
             return nil
         }
         return Set(paired.compactMap { normalizedName($0.name as String?) })
+    }
+
+    /// Last 3 bytes of each *paired* address (the advert carries the owner's); paired, not connected.
+    nonisolated static func pairedDeviceAddressSuffixes() -> Set<[UInt8]> {
+        guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else {
+            return []
+        }
+        var result: Set<[UInt8]> = []
+        for device in paired {
+            guard let address = device.addressString else { continue }
+            let bytes = address
+                .split(separator: "-")
+                .compactMap { UInt8($0, radix: 16) }
+            guard bytes.count == 6 else { continue }
+            result.insert(Array(bytes.suffix(3)))
+        }
+        return result
     }
 
     private var lastSystemConnectedNames: Set<String> = []

@@ -41,9 +41,17 @@ extension MenuPanelView {
                     }
                     Spacer()
                     if let percent = device.minPercent {
-                        Text("\(percent)%")
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        // One pod in the case: name the compartment, or the number reads as the whole device's charge.
+                        HStack(spacing: 3) {
+                            if let sole = device.soleCompartment {
+                                Text(sole.shortLabel)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("\(percent)%")
+                                .font(.callout.weight(.bold))
+                                .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        }
                     }
                 }
                 if device.isConnected {
@@ -68,7 +76,7 @@ extension MenuPanelView {
 
     func compartment(_ reading: BatteryReading) -> some View {
         HStack(spacing: 4) {
-            Text(compartmentLabel(reading.label))
+            Text(reading.shortLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text("\(reading.percent)%")
@@ -82,29 +90,38 @@ extension MenuPanelView {
         }
     }
 
-    func compartmentLabel(_ label: String?) -> String {
-        switch label {
-        case "Left": return "L"
-        case "Right": return "R"
-        default: return label ?? ""
-        }
-    }
-
     var devicesPlaceholder: some View {
         let message: String
         switch model.bluetoothAccess {
-        case .needsPermission:
+        case .denied:
+            message = "Bluetooth access denied — enable Voltio in System Settings → Privacy & Security → Bluetooth."
+        case .restricted:
+            message = "Bluetooth is blocked by your organization's device policy. Contact IT to allow Voltio."
+        case .awaitingPermission:
             message = "Allow Bluetooth to see AirPods & accessory battery."
         case .poweredOff:
             message = "Bluetooth is off."
         case .scanning, .unavailable:
             message = "No accessories with battery nearby."
         }
-        return HStack(spacing: 8) {
-            Image(systemName: "dot.radiowaves.left.and.right")
-                .foregroundStyle(.secondary)
-            Text(message).font(.caption).foregroundStyle(.secondary)
-            Spacer()
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .foregroundStyle(.secondary)
+                Text(message).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+            }
+            // After a denial macOS never re-prompts, so text alone leaves the user stuck. A policy
+            // block gets no link: nothing on that pane can be changed.
+            if model.bluetoothAccess.offersSettingsLink {
+                Button("Open Bluetooth Settings") {
+                    BluetoothPrivacySettings.open()
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tint)
+                .padding(.leading, 22)
+            }
         }
         .card()
     }

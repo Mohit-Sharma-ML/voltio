@@ -9,9 +9,22 @@ private let btLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Voltio", 
 /// Coarse Bluetooth availability used to drive the Connected Devices UI.
 enum BluetoothAccess: Equatable {
     case scanning
-    case needsPermission
+    /// "Don't Allow" was answered; macOS never re-prompts, so callers offer a Settings link.
+    case denied
+    /// Blocked by a device-management policy. No self-service remedy: the toggle is absent or
+    /// disabled, so a Settings link would be a dead end. Measured via `CBManagerAuthorization.restricted`.
+    case restricted
+    /// The prompt has not been shown yet; nothing is broken and no remedy is needed.
+    case awaitingPermission
     case poweredOff
     case unavailable
+
+    /// Whether honouring this state means opening the Bluetooth privacy pane.
+    ///
+    /// True only for a user denial, where the toggle exists and is off. False for a policy
+    /// restriction, where there is nothing to toggle — offering a link there sends the user to a
+    /// setting they cannot change.
+    var offersSettingsLink: Bool { self == .denied }
 }
 
 /// Cumulative diagnostic counters for the BLE scan pipeline, surfaced in
@@ -22,6 +35,10 @@ struct BLEDiagnostics: Equatable {
     var rejectedWeakRSSI = 0         // below proximity floor / RSSI unavailable
     var rejectedNotContinuity = 0    // no Apple manufacturer data
     var rejectedNoBatteries = 0      // decoded but zero battery entries
+    /// Devices the ownership gate is hiding right now (gauge, recomputed per emit).
+    var hiddenByOwnership = 0
+    /// Paired-address suffixes the gate can match (gauge); zero here + hidden > 0 is the bug signature.
+    var knownOwnerSuffixes = 0
     var advertsDecoded = 0           // yielded a usable device
     var gattDevicesSeen = 0          // connected devices exposing Battery Service
     var gattReads = 0                // battery values read over GATT
@@ -45,6 +62,8 @@ final class BluetoothBatteryScanner: NSObject {
     private var central: CBCentralManager?
     /// AirPods/Beats decoded from Continuity advertisements (no connection).
     private var devices: [UUID: PeripheralDevice] = [:]
+    /// Owner-address suffix per Continuity device (transport metadata, not displayed).
+    private var ownerSuffixes: [UUID: [[UInt8]]] = [:]
     private let staleAfter: TimeInterval = 60
 
     /// Devices read over a GATT connection (iPhone, iPad, Watch…), keyed by id.
@@ -67,6 +86,13 @@ final class BluetoothBatteryScanner: NSObject {
 
     override init() {
         super.init()
+        // No CBCentralManager yet: creating one triggers the Bluetooth TCC prompt, and that must
+        // come after onboarding explains it, not during app launch.
+    }
+
+    /// Create the central manager, which is what raises the system permission prompt. Idempotent.
+    func activate() {
+        guard central == nil else { return }
         central = CBCentralManager(
             delegate: self,
             queue: .main,
@@ -74,18 +100,27 @@ final class BluetoothBatteryScanner: NSObject {
         )
     }
 
+    /// Whether the radio has been brought up. Before `activate()`, no `CBCentralManager` exists and
+    /// macOS has not been asked for Bluetooth permission.
+    var isActivated: Bool { central != nil }
+
     var access: BluetoothAccess {
         switch CBCentralManager.authorization {
-        case .denied, .restricted:
-            return .needsPermission
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
         case .notDetermined:
-            return .needsPermission
+            return .awaitingPermission
         case .allowedAlways:
             break
         @unknown default:
             return .unavailable
         }
-        switch central?.state ?? .unknown {
+        // Authorized but not yet activated (onboarding still open): the radio simply isn't running
+        // yet. Reporting .unavailable here would surface "radio unavailable — verify entitlement".
+        guard let central else { return .awaitingPermission }
+        switch central.state {
         case .poweredOn: return .scanning
         case .poweredOff: return .poweredOff
         default: return .unavailable
@@ -175,23 +210,29 @@ final class BluetoothBatteryScanner: NSObject {
         let cutoff = Date().addingTimeInterval(-staleAfter)
         let before = devices.count
         devices = devices.filter { $0.value.lastSeen >= cutoff }
+        // Bounded: drop suffixes for devices no longer tracked as privacy addresses rotate.
+        ownerSuffixes = ownerSuffixes.filter { devices[$0.key] != nil }
         if devices.count != before { emit() }
     }
 
     private func emit() {
         let merged = Array(devices.values) + Array(gattDevices.values)
-        // Ownership gate: Continuity adverts (the `ble:` path) fire for ANY
-        // Apple device in radio range — yours, a colleague's, a stranger's
-        // (RSSI ≥ -65 is proximity, not ownership). Only devices the SYSTEM
-        // has connected to this Mac at least once are trusted; everything
-        // else stays invisible. GATT devices are inherently paired-only
-        // (retrieveConnectedPeripherals), so they pass untouched.
+        ownership.refreshPairedAddressesIfStale()
+        // Keyed by name: one physical device under rotated privacy addresses is still one hidden device.
+        var hiddenNames = Set<String>()
         let owned = merged.filter { device in
-            device.id.hasPrefix("ble:")
-                ? ownership.isOwned(name: device.name) : true
+            let uuid = UUID(uuidString: String(device.id.dropFirst("ble:".count)))
+            let visible = ownership.isVisible(
+                deviceID: device.id,
+                name: device.name,
+                suffixes: uuid.flatMap { ownerSuffixes[$0] } ?? []
+            )
+            if !visible { hiddenNames.insert(device.name) }
+            return visible
         }
-        // Collapse indistinguishable rows (same kind, name and battery readings)
-        // — e.g. the same AirPods re-observed under a rotated privacy address.
+        diagnostics.hiddenByOwnership = hiddenNames.count
+        diagnostics.knownOwnerSuffixes = ownership.knownAddressSuffixCount
+        // Collapse duplicate rows (e.g. the same AirPods under a rotated privacy address).
         var seen = Set<String>()
         var collapsedSignatures = Set<String>()
         let unique = owned.filter { device in
@@ -356,6 +397,7 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
         // Extract Sendable values before hopping to the main actor.
         let uuid = peripheral.identifier
         let advertisedName = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+        let ownerSuffixes = ContinuityDecoder.ownerAddressSuffixes(manufacturerData: manufacturerData)
 
         MainActorIsolation.assume {
             guard let device = Self.makeDevice(uuid: uuid, advertisedName: advertisedName, pods: pods) else {
@@ -363,10 +405,12 @@ extension BluetoothBatteryScanner: CBCentralManagerDelegate {
                 return
             }
             self.diagnostics.advertsDecoded += 1
-            // Refresh recency on every sighting, but only republish when the
-            // reading actually changed — avoids a recompute per advertisement.
+            let suffixChanged = !ownerSuffixes.isEmpty && self.ownerSuffixes[uuid] != ownerSuffixes
+            if !ownerSuffixes.isEmpty { self.ownerSuffixes[uuid] = ownerSuffixes }
+            // A newly-learned owner suffix can flip the device from gated-out to visible.
             if let existing = self.devices[uuid], Self.sameContent(existing, device) {
                 self.devices[uuid] = device
+                if suffixChanged { self.emit() }
                 return
             }
             self.devices[uuid] = device

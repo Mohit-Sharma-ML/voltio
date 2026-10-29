@@ -126,7 +126,8 @@ public enum ContinuityDecoder {
         let caseRaw = caseByte & 0x0F
         let chargeFlags = caseByte >> 4
 
-        // 0x1B20 broadcasts precise levels for all three compartments at bytes 10-12 with bit 7 as a charging flag.
+        // 0x1B20 carries precise levels in bytes 11 (high-nibble pod), 10 (low-nibble pod) and 12 (case);
+        // bit 7 of each is a charging flag. Verified live: L67/R80 read as byte11=67, byte10=80 with flip set.
         let precise: (left: Int?, right: Int?, caseBattery: Int?) = {
             guard model == preciseLevelModel, payload.count > 12 else { return (nil, nil, nil) }
             func level(_ raw: UInt8, band: UInt8) -> Int? {
@@ -135,9 +136,11 @@ public enum ContinuityDecoder {
                 guard value <= 100, value / 10 == Int(band) else { return nil }  // only refine a value it agrees with
                 return value
             }
+            let high = level(payload[11], band: highNibble)
+            let low = level(payload[10], band: lowNibble)
             return (
-                level(payload[10], band: leftRaw),
-                level(payload[11], band: rightRaw),
+                flip ? high : low,
+                flip ? low : high,
                 level(payload[12], band: caseRaw)
             )
         }()

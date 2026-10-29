@@ -170,6 +170,39 @@ final class ContinuityDecoderTests: XCTestCase {
         XCTAssertFalse(battery.caseCharging)
     }
 
+    /// Live capture 2026-10-29, pods at different levels (macOS: Left 67%, Right 80%, case in use so
+    /// no reading). Asymmetric levels are what expose the byte order: byte 11 carries the high-nibble
+    /// pod and byte 10 the low-nibble pod, so with flip set byte 11 is the *left* ear.
+    ///
+    /// The earlier fixtures all had equal pods, so a swapped mapping still passed them.
+    func testLiveAsymmetricPodsDecodeToCorrectEars() throws {
+        let payload: [UInt8] = [
+            0x01, 0x1B, 0x20, 0x0B, 0x68, 0x8F, 0x11, 0x00, 0x0A, 0x0A,
+            0x50, 0x43, 0xFF, 0x7E, 0x60, 0x0B, 0x00, 0x00, 0x00, 0x66,
+            0x1C, 0x8A, 0xE4, 0x44, 0xF1,
+        ]
+        let battery = try XCTUnwrap(ContinuityDecoder.decodeProximityPairing(
+            manufacturerData: Data([0x4C, 0x00, 0x07, 0x19] + payload)))
+
+        XCTAssertEqual(battery.left, 67)     // byte 11 (0x43), high nibble 6
+        XCTAssertEqual(battery.right, 80)    // byte 10 (0x50), low nibble 8
+        XCTAssertNil(battery.caseBattery)    // 0xFF sentinel — case not reporting
+    }
+
+    /// Same session, a moment earlier: the pods read 66/79 and the values track continuously.
+    func testLiveAsymmetricPodsTrackAcrossAdverts() throws {
+        let payload: [UInt8] = [
+            0x01, 0x1B, 0x20, 0x0B, 0x67, 0x8F, 0x11, 0x00, 0x0A, 0x0A,
+            0x4F, 0x42, 0xFF, 0x7E, 0x60, 0x0B, 0x00, 0x00, 0x00, 0x66,
+            0x1C, 0x7C, 0xD1, 0x85, 0x67,
+        ]
+        let battery = try XCTUnwrap(ContinuityDecoder.decodeProximityPairing(
+            manufacturerData: Data([0x4C, 0x00, 0x07, 0x19] + payload)))
+
+        XCTAssertEqual(battery.left, 66)
+        XCTAssertEqual(battery.right, 79)
+    }
+
     /// Bit 7 marks a charging compartment; a charging pod at 87% must not be rejected
     /// as out-of-range and fall back to the 80% tens band.
     func testChargingBitDoesNotHideThePreciseValue() throws {

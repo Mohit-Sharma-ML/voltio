@@ -44,9 +44,15 @@ menu-bar agent, and makes **zero network calls** — all telemetry stays on your
 - A live visualization of where the watts go: **adapter → battery / system split → connected devices**, with animated liquid-fill bars, the current battery %, and a power summary.
 
 ### Connected devices
-- Battery levels for Bluetooth/USB accessories — **AirPods, Beats, Magic Mouse / Keyboard / Trackpad** (HID + Apple Continuity BLE decoding).
+- Battery levels for Bluetooth accessories — **AirPods, Beats, Magic Mouse / Keyboard / Trackpad** (HID + Apple Continuity BLE decoding).
 - **iPhone / iPad** battery via the Bluetooth GATT Battery Service.
 - Device history: remembers your accessories and keeps showing them when offline, with a "last seen" indicator.
+
+> **Third-party headphones and speakers:** most connect over Classic Bluetooth (HFP/A2DP), which
+> macOS exposes to apps only through private APIs. Voltio doesn't use those, so it can't read their
+> level — a connected headset appears with **"Battery not reported over Bluetooth"** rather than a
+> number. BLE devices that publish the standard Battery Service (`0x180F`) do report a level.
+> AirPods work because they broadcast Apple's own Continuity advertisement alongside the audio link.
 
 ### Alerts
 - Configurable rules for **low**, **critical**, and **fully charged** thresholds (with hysteresis to avoid flapping).

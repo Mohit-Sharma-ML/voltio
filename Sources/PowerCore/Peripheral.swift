@@ -44,7 +44,13 @@ public enum PeripheralKind: String, Sendable, Equatable, Codable {
         if n.contains("keyboard") || n.contains("keys-to-go") || n.contains("k380")
             || n.contains("k480") { return .keyboard }
         if n.contains("trackpad") { return .trackpad }
-        if n.contains("headphone") || n.contains("beats") { return .headphones }
+        // Audio accessories. Generic terms plus brands observed live on Classic-connected gear
+        // (JBL Wave Beam, JBL Go 5, JBL PartyBox) — those report no battery, so the row still
+        // needs a correct icon.
+        if n.contains("headphone") || n.contains("beats") || n.contains("airpod")
+            || n.contains("earbud") || n.contains("earphone") || n.contains("headset")
+            || n.contains("buds") || n.contains("speaker") || n.contains("soundbar")
+            || n.contains("jbl") || n.contains("sony") || n.contains("bose") { return .headphones }
         return .other
     }
 }

@@ -62,6 +62,12 @@ extension MenuPanelView {
                         }
                     } else if let single = device.batteries.first {
                         FillBar(value: Double(single.percent) / 100, tint: single.tint, height: 5)
+                    } else {
+                        // Connected, but no public API exposes its level: say so rather than
+                        // leaving an empty row that reads as a loading failure.
+                        Text("Battery not reported over Bluetooth")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 } else {
                     Text("Last seen \(Format.relative(device.lastSeen))")

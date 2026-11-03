@@ -73,6 +73,13 @@ final class BluetoothBatteryScanner: NSObject {
     /// Cached battery-level characteristic per peripheral for cheap re-reads.
     private var batteryChars: [UUID: CBCharacteristic] = [:]
 
+    /// Connected Bluetooth devices whose battery cannot be read over any public API.
+    ///
+    /// Classic-audio headsets (most third-party earphones/speakers) connect over HFP/A2DP,
+    /// which CoreBluetooth cannot see and which exposes no public battery getter. They used to
+    /// vanish from the list entirely, which reads as a bug rather than a limitation.
+    private var unreadable: [PeripheralDevice] = []
+
     private let batteryServiceUUID = CBUUID(string: "180F")
     private let batteryCharUUID = CBUUID(string: "2A19")
 
@@ -176,6 +183,10 @@ final class BluetoothBatteryScanner: NSObject {
         btLog.debug("GATT refresh: \(connected.count) connected device(s) expose the Battery Service")
         diagnostics.gattDevicesSeen = max(diagnostics.gattDevicesSeen, connected.count)
         let currentIDs = Set(connected.map(\.identifier))
+        refreshUnreadable(
+            readableNames: Set(connected.compactMap(\.name))
+                .union(devices.values.map(\.name))
+        )
 
         // Drop devices that are no longer connected.
         var changed = false
@@ -205,6 +216,51 @@ final class BluetoothBatteryScanner: NSObject {
         }
     }
 
+    /// Record connected Classic-Bluetooth devices whose battery no public API exposes.
+    ///
+    /// These are real, connected accessories that the BLE path cannot see: headsets and speakers
+    /// link over HFP/A2DP, which CoreBluetooth does not surface. Listing them as "battery not
+    /// reported" explains the gap; omitting them silently looks like a bug.
+    private func refreshUnreadable(readableNames: Set<String>) {
+        let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        let found = Self.unreadableDevices(
+            connectedClassicNames: paired
+                .filter { $0.isConnected() }
+                .compactMap { $0.name as String? },
+            readableNames: readableNames
+        )
+        guard found != unreadable else { return }
+        unreadable = found
+        emit()
+    }
+
+    /// Pure selection of connected-but-unreadable devices, so it is testable without Bluetooth.
+    /// A device counts as unreadable only when it is connected and no readable reading exists for
+    /// a name it shares — matching is by name because Classic entries carry no CoreBluetooth UUID.
+    nonisolated static func unreadableDevices(
+        connectedClassicNames: [String],
+        readableNames: Set<String>
+    ) -> [PeripheralDevice] {
+        // Normalise both sides here: callers pass names straight from two different stacks, and
+        // relying on them to pre-lowercase was a bug waiting to happen.
+        let readable = Set(readableNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var seen = Set<String>()
+        return connectedClassicNames.compactMap { rawName in
+            let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = name.lowercased()
+            guard !name.isEmpty, !readable.contains(key) else { return nil }
+            guard seen.insert(key).inserted else { return nil }
+            return PeripheralDevice(
+                id: "classic:\(key)",
+                name: name,
+                kind: PeripheralKind.classify(deviceName: name),
+                source: .bluetooth,
+                batteries: [],
+                isConnected: true
+            )
+        }
+    }
+
     /// Drop devices we haven't seen recently (called from the model's poll).
     func pruneStale() {
         let cutoff = Date().addingTimeInterval(-staleAfter)
@@ -216,7 +272,7 @@ final class BluetoothBatteryScanner: NSObject {
     }
 
     private func emit() {
-        let merged = Array(devices.values) + Array(gattDevices.values)
+        let merged = Array(devices.values) + Array(gattDevices.values) + unreadable
         ownership.refreshPairedAddressesIfStale()
         // Keyed by name: one physical device under rotated privacy addresses is still one hidden device.
         var hiddenNames = Set<String>()

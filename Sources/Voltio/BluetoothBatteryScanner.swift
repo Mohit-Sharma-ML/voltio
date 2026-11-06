@@ -163,7 +163,11 @@ final class BluetoothBatteryScanner: NSObject {
     /// Battery Service — iPhone, iPad, Apple Watch, etc. (AirPods come through the
     /// advertisement path instead). Safe to call every poll.
     func refreshConnectedDevices() {
-        guard let central, central.state == .poweredOn else { return }
+        guard let central, central.state == .poweredOn else {
+            // Radio off or unauthorized: nothing can be connected, so stale rows must not linger.
+            clearUnreadable()
+            return
+        }
         // Refresh the paired-names cache lazily (≥10 min between IOBluetooth
         // queries); drives the Continuity ownership gate.
         let bleNames = Set(devices.values.compactMap { ContinuityOwnershipTracker.normalizedName($0.name) })
@@ -231,6 +235,13 @@ final class BluetoothBatteryScanner: NSObject {
         )
         guard found != unreadable else { return }
         unreadable = found
+        emit()
+    }
+
+    /// Drop "not reported" rows when the radio is off: nothing can be connected then.
+    private func clearUnreadable() {
+        guard !unreadable.isEmpty else { return }
+        unreadable = []
         emit()
     }
 

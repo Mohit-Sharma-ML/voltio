@@ -66,4 +66,14 @@ final class UnreadableDeviceTests: XCTestCase {
         )
         XCTAssertEqual(found.first?.kind, .headphones)
     }
+
+    /// With the radio off nothing can be connected, so no row may be produced. The scanner also
+    /// clears its stored rows on that path — otherwise a disconnected device would linger forever.
+    func testNoRowsWhenNothingIsConnected() {
+        let found = BluetoothBatteryScanner.unreadableDevices(
+            connectedClassicNames: [],
+            readableNames: []
+        )
+        XCTAssertTrue(found.isEmpty, "radio off / nothing connected must yield no rows")
+    }
 }

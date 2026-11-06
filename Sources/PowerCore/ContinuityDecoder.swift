@@ -35,17 +35,17 @@ public struct AirPodsBattery: Sendable, Equatable {
     public var isEmpty: Bool { left == nil && right == nil && caseBattery == nil }
 }
 
-/// Decodes Apple BLE Continuity manufacturer data. This format is not published
-/// by Apple; the layout below follows widely-used community reverse engineering
-/// (OpenPods / furiousMAC) and may need per-model calibration.
+/// Decodes Apple BLE Continuity manufacturer data (unpublished; community reverse engineering, per-model calibration).
 public enum ContinuityDecoder {
     /// Apple's Bluetooth company identifier (little-endian in advert data).
     private static let appleCompanyID: (UInt8, UInt8) = (0x4C, 0x00)
     /// TLV type for the Proximity Pairing (AirPods) message.
     private static let proximityPairingType: UInt8 = 0x07
 
-    /// Parse the manufacturer-data blob (including the 2-byte company id, as
-    /// CoreBluetooth provides it) and return AirPods battery if present.
+    /// AirPods 4 (ANC) — the only model with calibrated precise level bytes.
+    static let preciseLevelModel: UInt16 = 0x1B20
+
+    /// Parse manufacturer data (including the 2-byte company id, as CoreBluetooth provides it).
     public static func decodeProximityPairing(manufacturerData data: Data) -> AirPodsBattery? {
         let bytes = [UInt8](data)
         guard bytes.count >= 4,
@@ -77,6 +77,35 @@ public enum ContinuityDecoder {
         return nil
     }
 
+    /// Owner address suffixes carried in the advert tail: bytes 13-15 and 16-18.
+    ///
+    /// Two live sessions disagree about which one is stable. Session A had 13-15 = the paired
+    /// iPhone's suffix; session B (same Mac, same pods, hours later) had 13-15 = bytes matching
+    /// nothing while 16-18 held the paired AirPods' own suffix. 13-15 rotates, so neither field
+    /// alone is trustworthy — return both and accept a match on either.
+    public static func ownerAddressSuffixes(manufacturerData data: Data) -> [[UInt8]] {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 4,
+              bytes[0] == appleCompanyID.0, bytes[1] == appleCompanyID.1
+        else { return [] }
+
+        var index = 2
+        while index + 1 < bytes.count {
+            let type = bytes[index]
+            let length = Int(bytes[index + 1])
+            let payloadStart = index + 2
+            let payloadEnd = payloadStart + length
+            guard payloadEnd <= bytes.count else { return [] }
+            if type == proximityPairingType {
+                let payload = Array(bytes[payloadStart..<payloadEnd])
+                guard payload.count >= 19 else { return [] }
+                return [Array(payload[13...15]), Array(payload[16...18])]
+            }
+            index = payloadEnd
+        }
+        return []
+    }
+
     /// Decode the proximity-pairing payload (excludes type + length bytes).
     /// Layout: [0]=prefix [1..2]=model [3]=status [4]=pods battery
     /// [5]=case battery (low nibble) + charging flags (high nibble).
@@ -97,11 +126,30 @@ public enum ContinuityDecoder {
         let caseRaw = caseByte & 0x0F
         let chargeFlags = caseByte >> 4
 
+        // 0x1B20 carries precise levels in bytes 11 (high-nibble pod), 10 (low-nibble pod) and 12 (case);
+        // bit 7 of each is a charging flag. Verified live: L67/R80 read as byte11=67, byte10=80 with flip set.
+        let precise: (left: Int?, right: Int?, caseBattery: Int?) = {
+            guard model == preciseLevelModel, payload.count > 12 else { return (nil, nil, nil) }
+            func level(_ raw: UInt8, band: UInt8) -> Int? {
+                guard band <= 10 else { return nil }
+                let value = Int(raw & 0x7F)  // bit 7 is a charging flag, not part of the level
+                guard value <= 100, value / 10 == Int(band) else { return nil }  // only refine a value it agrees with
+                return value
+            }
+            let high = level(payload[11], band: highNibble)
+            let low = level(payload[10], band: lowNibble)
+            return (
+                flip ? high : low,
+                flip ? low : high,
+                level(payload[12], band: caseRaw)
+            )
+        }()
+
         return AirPodsBattery(
             model: model,
-            left: percent(leftRaw),
-            right: percent(rightRaw),
-            caseBattery: percent(caseRaw),
+            left: precise.left ?? percent(leftRaw),
+            right: precise.right ?? percent(rightRaw),
+            caseBattery: precise.caseBattery ?? percent(caseRaw),
             leftCharging: chargeFlags & 0b0001 != 0,
             rightCharging: chargeFlags & 0b0010 != 0,
             caseCharging: chargeFlags & 0b0100 != 0
@@ -113,8 +161,7 @@ public enum ContinuityDecoder {
         raw > 10 ? nil : Int(raw) * 10
     }
 
-    /// Parse-failure diagnostics: a malformed payload here usually means the
-    /// community-reverse-engineered layout needs per-model calibration.
+    /// Parse-failure diagnostics: a malformed payload usually means per-model calibration is needed.
     private static let log = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Voltio", category: "continuity"
     )

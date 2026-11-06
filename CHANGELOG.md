@@ -3,6 +3,19 @@
 All notable changes to Voltio are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- AirPods no longer disappear from Connected Devices. Ownership was judged by matching the advertisement's name against the paired-device name, but the same hardware reports different names on each side (`Mohit's AirPods - Find My` vs `AirPods 4 (ANC)`), so every advert was discarded. Ownership is now also proven by the paired phone's Bluetooth address carried in the advert, with name matching kept as a fallback.
+- AirPods 4 (ANC) battery levels now match macOS. This model broadcasts precise per-compartment percentages in a form the classic nibble decode missed, which showed 50% where macOS reported 59% and dropped the right ear. All three readings — left, right and case — now match what macOS reports, including while charging.
+- A single reporting AirPods compartment is labelled (`L 23%`) in the panel and in low-battery alerts, instead of reading as the whole device's charge — e.g. with one pod in its case.
+- Denied Bluetooth access is now recoverable. The app previously said to allow Bluetooth without offering a way to do it; macOS never re-prompts after a denial, so the panel and Settings → Devices now offer **Open Bluetooth Settings**.
+- "Bluetooth access denied" and "not asked yet" are now distinct states, so diagnostics no longer give a remedy for a prompt that hasn't appeared.
+
+### Added
+- BLE diagnostics now report how many nearby devices the ownership gate is hiding and how many paired addresses it can match — the blind spot that made the AirPods bug hard to diagnose.
+- Onboarding explains the Bluetooth permission before macOS asks for it.
+
 ## [0.6.0] - 2026-10-20
 
 ### Fixed

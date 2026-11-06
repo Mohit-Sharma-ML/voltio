@@ -31,7 +31,7 @@ struct VoltioApp: App {
         .menuBarExtraStyle(.window)
         // First launch only; dismissed via "Get Started".
         Window("Welcome to Voltio", id: "onboarding") {
-            OnboardingView(settings: settings)
+            OnboardingView(settings: settings, model: model)
                 .installOpenWindowBridge()
         }
         .windowResizability(.contentSize)
@@ -106,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
             DispatchQueue.main.async {
                 OpenWindow.open(id: "onboarding")
+            }
+            // Safety net: if the window never opens (or is dismissed some other way), the radio must
+            // still come up — Bluetooth should not be held hostage by onboarding.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 45) {
+                MainWindowController.shared.sharedModel?.activateBluetoothIfNeeded()
             }
         }
     }

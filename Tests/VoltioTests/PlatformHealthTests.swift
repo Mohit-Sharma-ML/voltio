@@ -17,10 +17,36 @@ final class PlatformHealthTests: XCTestCase {
     }
 
     func testBluetoothCheckReflectsAccess() {
-        for access in [BluetoothAccess.scanning, .poweredOff, .needsPermission, .unavailable] {
+        for access in [
+            BluetoothAccess.scanning, .poweredOff, .denied, .restricted,
+            .awaitingPermission, .unavailable,
+        ] {
             let check = PlatformHealth.runChecks(bluetoothAccess: access).first { $0.id == "bt" }
             XCTAssertEqual(check?.passed, access == .scanning)
         }
+    }
+
+    /// A denial needs a remedy (System Settings); "not asked yet" does not.
+    func testBluetoothDenialAndPendingAreDistinguishable() {
+        let denied = PlatformHealth.runChecks(bluetoothAccess: .denied).first { $0.id == "bt" }
+        let pending = PlatformHealth.runChecks(bluetoothAccess: .awaitingPermission).first { $0.id == "bt" }
+
+        XCTAssertNotEqual(denied?.detail, pending?.detail)
+        XCTAssertTrue(denied?.detail.contains("System Settings") ?? false)
+        XCTAssertFalse(pending?.detail.contains("System Settings") ?? true)
+    }
+
+    /// A policy block cannot be fixed in System Settings, so pointing the user there would be a dead
+    /// end — the very failure this branch set out to remove, one layer deeper.
+    func testPolicyRestrictionDoesNotPointAtSystemSettings() {
+        let restricted = PlatformHealth.runChecks(bluetoothAccess: .restricted).first { $0.id == "bt" }
+        let denied = PlatformHealth.runChecks(bluetoothAccess: .denied).first { $0.id == "bt" }
+
+        XCTAssertNotEqual(restricted?.detail, denied?.detail)
+        XCTAssertFalse(
+            restricted?.detail.contains("System Settings") ?? true,
+            "a managed Mac has no such toggle — the message must not send users there")
+        XCTAssertTrue(restricted?.detail.lowercased().contains("policy") ?? false)
     }
 
     func testChecksEquatableByID() {

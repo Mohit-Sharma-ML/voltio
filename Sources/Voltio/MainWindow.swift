@@ -21,6 +21,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         self.model = model
     }
 
+    /// The shared model, for callers that need to nudge app-level state (e.g. the launch safety net
+    /// that brings Bluetooth up if onboarding never finishes).
+    var sharedModel: BatteryModel? { model }
+
     /// Create (if needed) and bring the window forward, raising the Dock icon.
     func show() {
         guard let settings, let model else { return }

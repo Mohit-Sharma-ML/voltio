@@ -218,9 +218,10 @@ final class AlertManager {
 
             if !device.isAnyCharging && percent <= config.threshold {
                 if isArmed {
+                    let text = accessoryAlertText(for: device)
                     present(
-                        title: "\(device.name) Low",
-                        subtitle: "\(percent)% remaining — time to charge",
+                        title: text.title,
+                        subtitle: text.subtitle,
                         icon: "battery.25percent",
                         color: config.color ?? .orange,
                         position: .top,
@@ -338,4 +339,16 @@ private final class PlayingSound {
 
     func stop() { sound.stop() }
     func play() { sound.play() }
+}
+
+/// Accessory low-battery alert copy. A lone compartment must be named, or the number reads as the
+/// whole device's charge — the same rule the panel applies. Pure, so it is testable on its own.
+func accessoryAlertText(for device: PeripheralDevice) -> (title: String, subtitle: String) {
+    guard let percent = device.minPercent else {
+        return ("\(device.name) Low", "Time to charge")
+    }
+    let level = device.soleCompartment
+        .map { "\($0.label ?? "One part") \(percent)%" }
+        ?? "\(percent)%"
+    return ("\(device.name) Low", "\(level) remaining — time to charge")
 }

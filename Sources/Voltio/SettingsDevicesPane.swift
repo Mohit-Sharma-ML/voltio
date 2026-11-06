@@ -36,7 +36,16 @@ struct DevicesSettingsView: View {
                     SettingsRow(
                         icon: "dot.radiowaves.left.and.right", tint: .gray,
                         title: bluetoothTitle, subtitle: bluetoothSubtitle
-                    ) { EmptyView() }
+                    ) {
+                        // macOS never re-prompts after a denial, so a text-only row has no way back.
+                        // A policy block offers no link: there is nothing to toggle.
+                        if model.bluetoothAccess.offersSettingsLink {
+                            Button("Open Settings") {
+                                BluetoothPrivacySettings.open()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
                 } else {
                     ForEach(Array(model.peripherals.enumerated()), id: \.element.id) { index, device in
                         DeviceSettingsRow(settings: settings, model: model, device: device)
@@ -89,7 +98,7 @@ struct DevicesSettingsView: View {
                 SettingsRow(
                     icon: "antenna.radiowaves.left.and.right", tint: .blue,
                     title: "BLE Advertisements",
-                    subtitle: "Seen: \(d.advertsSeen) · Decoded: \(d.advertsDecoded) · Weak RSSI: \(d.rejectedWeakRSSI) · Not Continuity: \(d.rejectedNotContinuity) · No batteries: \(d.rejectedNoBatteries)"
+                    subtitle: "Seen: \(d.advertsSeen) · Decoded: \(d.advertsDecoded) · Weak RSSI: \(d.rejectedWeakRSSI) · Not Continuity: \(d.rejectedNotContinuity) · No batteries: \(d.rejectedNoBatteries) · Hidden by ownership: \(d.hiddenByOwnership) (paired addresses known: \(d.knownOwnerSuffixes))"
                 ) { EmptyView() }
                 RowDivider()
                 SettingsRow(
@@ -217,7 +226,9 @@ struct DevicesSettingsView: View {
 
     private var bluetoothTitle: String {
         switch model.bluetoothAccess {
-        case .needsPermission: return "Bluetooth access needed"
+        case .denied: return "Bluetooth access denied"
+        case .restricted: return "Bluetooth blocked by policy"
+        case .awaitingPermission: return "Bluetooth permission pending"
         case .poweredOff: return "Bluetooth is off"
         case .scanning, .unavailable: return "No accessories nearby"
         }
@@ -225,7 +236,12 @@ struct DevicesSettingsView: View {
 
     private var bluetoothSubtitle: String {
         switch model.bluetoothAccess {
-        case .needsPermission: return "Allow Bluetooth to see AirPods and accessory battery."
+        case .denied:
+            return "macOS won't ask again. Enable Voltio under System Settings → Privacy & Security → Bluetooth."
+        case .restricted:
+            return "Your organization's device policy blocks Bluetooth for Voltio. There is no setting you can change; contact IT."
+        case .awaitingPermission:
+            return "macOS will ask for Bluetooth access; AirPods and accessory battery need it."
         case .poweredOff: return "Turn on Bluetooth to detect accessories."
         case .scanning, .unavailable: return "No accessories with a battery detected nearby."
         }
@@ -255,10 +271,18 @@ private struct DeviceSettingsRow: View {
             Spacer(minLength: 10)
 
             if let percent = device.minPercent {
-                Text("\(percent)%")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(device.isConnected ? device.tint : .secondary)
-                    .monospacedDigit()
+                HStack(spacing: 3) {
+                    // One pod in the case: name the compartment, or the number reads as the whole device's charge.
+                    if let sole = device.soleCompartment {
+                        Text(sole.shortLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("\(percent)%")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(device.isConnected ? device.tint : .secondary)
+                        .monospacedDigit()
+                }
             }
 
             Button { showAlertConfig.toggle() } label: {

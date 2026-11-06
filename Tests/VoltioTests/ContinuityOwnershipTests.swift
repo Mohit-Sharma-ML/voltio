@@ -17,10 +17,13 @@ final class ContinuityOwnershipTests: XCTestCase {
         super.setUp()
         // Never touch IOBluetooth from tests.
         ContinuityOwnershipTracker.pairedNamesProvider = { nil }
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }
     }
 
     override func tearDown() {
         ContinuityOwnershipTracker.pairedNamesProvider = ContinuityOwnershipTracker.fetchPairedNames
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider =
+            ContinuityOwnershipTracker.pairedDeviceAddressSuffixes
         super.tearDown()
     }
 
@@ -133,5 +136,146 @@ final class ContinuityOwnershipTests: XCTestCase {
         XCTAssertTrue(tracker.isOwned(name: "connected pods"))
         XCTAssertTrue(tracker.isOwned(name: "paired pods"))
         XCTAssertFalse(tracker.isOwned(name: "stranger pods"))
+    }
+
+    // MARK: - Owner-address path (the AirPods case)
+
+    /// Regression: advert name `Mohit's AirPods - Find My` vs paired `AirPods 4 (ANC)`.
+    func testAdvertNameMayDifferFromPairedName() {
+        let tracker = ContinuityOwnershipTracker()
+        // Paired list holds the model name, not the advert name.
+        ContinuityOwnershipTracker.pairedNamesProvider = { ["airpods 4 (anc)"] }
+        tracker.refreshPairedNamesIfStale(visibleNames: ["mohit's airpods - find my"])
+
+        // Name matching alone still fails — this is the bug being fixed.
+        XCTAssertFalse(tracker.isOwned(name: "mohit's airpods - find my"))
+    }
+
+    func testAddressSuffixGrantsOwnershipRegardlessOfName() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [[0x43, 0xB3, 0x52]] }
+        tracker.refreshPairedAddressesIfStale()
+
+        // Either candidate field may prove ownership.
+        XCTAssertTrue(tracker.isOwnedByAddress([[0x43, 0xB3, 0x52]]))
+        XCTAssertTrue(tracker.isOwnedByAddress([[0x90, 0x05, 0x6F], [0x43, 0xB3, 0x52]]))
+        // A different device's suffix must not be trusted.
+        XCTAssertFalse(tracker.isOwnedByAddress([[0x7E, 0x60, 0x0B]]))
+        // Empty, malformed or absent suffixes never match.
+        XCTAssertFalse(tracker.isOwnedByAddress([]))
+        XCTAssertFalse(tracker.isOwnedByAddress([[0x43, 0xB3]]))
+        XCTAssertFalse(tracker.isOwnedByAddress([[]]))
+    }
+
+    func testAddressRefreshIsCached() {
+        let tracker = ContinuityOwnershipTracker()
+        var calls = 0
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = {
+            calls += 1
+            return [[0x43, 0xB3, 0x52]]
+        }
+        let now = Date()
+        tracker.refreshPairedAddressesIfStale(now: now)
+        tracker.refreshPairedAddressesIfStale(now: now.addingTimeInterval(30))
+        XCTAssertEqual(calls, 1, "second refresh inside 60 s should be a no-op")
+
+        tracker.refreshPairedAddressesIfStale(now: now.addingTimeInterval(61))
+        XCTAssertEqual(calls, 2)
+    }
+
+    /// Zero means the address path has nothing to compare — the state that hid every AirPods advert.
+    func testKnownAddressSuffixCountReflectsCache() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }
+        XCTAssertEqual(tracker.knownAddressSuffixCount, 0, "nothing fetched yet")
+
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = {
+            [[0x43, 0xB3, 0x52], [0x7E, 0x60, 0x0B]]
+        }
+        tracker.refreshPairedAddressesIfStale()
+        XCTAssertEqual(tracker.knownAddressSuffixCount, 2)
+    }
+
+    // MARK: - The gate predicate (the actual bug site)
+
+    /// End-to-end shape of the 2026-10-23 regression, at the level the scanner runs it: the
+    /// device's advert name does not match its paired name, so only the address can save it.
+    func testGateShowsAirPodsMatchedByAddressOnly() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedNamesProvider = { ["airpods 4 (anc)"] }
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [[0x43, 0xB3, 0x52]] }
+        tracker.refreshPairedAddressesIfStale()
+        tracker.refreshPairedNamesIfStale(visibleNames: ["mohit's airpods - find my"])
+
+        // Name match fails (different string), address match succeeds — the fix in one assertion.
+        XCTAssertFalse(tracker.isOwned(name: "Mohit's AirPods - Find My"))
+        XCTAssertTrue(tracker.isVisible(
+            deviceID: "ble:\(UUID().uuidString)",
+            name: "Mohit's AirPods - Find My",
+            suffixes: [[0x43, 0xB3, 0x52]]
+        ))
+    }
+
+    /// A stranger's AirPods carry a different owner's address and must stay hidden.
+    func testGateHidesForeignDevice() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [[0x43, 0xB3, 0x52]] }
+        tracker.refreshPairedAddressesIfStale()
+
+        XCTAssertFalse(tracker.isVisible(
+            deviceID: "ble:\(UUID().uuidString)",
+            name: "Someone Else's AirPods",
+            suffixes: [[0x7E, 0x60, 0x0B]]
+        ))
+    }
+
+    /// The failure state that caused the bug: no suffixes known, name mismatch → hidden.
+    func testGateHidesDeviceWhenAddressCacheIsEmpty() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [] }
+        tracker.refreshPairedAddressesIfStale()
+
+        XCTAssertEqual(tracker.knownAddressSuffixCount, 0)
+        XCTAssertFalse(tracker.isVisible(
+            deviceID: "ble:\(UUID().uuidString)",
+            name: "Mohit's AirPods - Find My",
+            suffixes: [[0x43, 0xB3, 0x52]]
+        ), "no known suffixes + no name match = invisible (pre-fix behaviour)")
+    }
+
+    /// GATT/HID devices are paired by construction and must never be filtered.
+    func testGatePassesNonBLEIDs() {
+        let tracker = ContinuityOwnershipTracker()
+        for id in ["gatt:ABC", "hid:00-11-22", "gatt:\(UUID().uuidString)"] {
+            XCTAssertTrue(tracker.isVisible(deviceID: id, name: "Anything", suffixes: []),
+                          "\(id) should bypass the gate")
+        }
+    }
+
+    /// Name match alone still admits a device (the fallback path is retained, not removed).
+    func testGateStillAdmitsByName() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedNamesProvider = { ["magic mouse"] }
+        tracker.refreshPairedNamesIfStale(visibleNames: [])
+
+        XCTAssertTrue(tracker.isVisible(
+            deviceID: "ble:\(UUID().uuidString)",
+            name: "Magic Mouse",
+            suffixes: []
+        ))
+    }
+
+    /// Session B regression: bytes 13-15 rotated to bytes matching nothing, but 16-18 still held the
+    /// paired AirPods' suffix. The gate must stay open on the second field alone.
+    func testGateAcceptsWhenOnlyTheSecondSuffixFieldMatches() {
+        let tracker = ContinuityOwnershipTracker()
+        ContinuityOwnershipTracker.pairedAddressSuffixProvider = { [[0x5E, 0x30, 0x44]] }
+        tracker.refreshPairedAddressesIfStale()
+
+        XCTAssertTrue(tracker.isVisible(
+            deviceID: "ble:\(UUID().uuidString)",
+            name: "Mohit's AirPods - Find My",       // name does not match the paired name
+            suffixes: [[0x90, 0x05, 0x6F], [0x5E, 0x30, 0x44]]
+        ), "second field matching must be enough — this is what keeps AirPods visible")
     }
 }
